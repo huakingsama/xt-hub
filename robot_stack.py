@@ -48,9 +48,8 @@ COMPS = [
     ),
     dict(
         name="camera", label="深度相机驱动", check=("astra_camera_nod[e]|uvc_camera_nod[e]", 0, "/tmp/astra.log"),
-        start=SH + "'setsid nohup roslaunch astra_camera astra.launch > /tmp/astra.log 2>&1 < /dev/null &'",
-        stop=SH + "'pkill -f astra_camera_nod[e]; pkill -f uvc_camera_nod[e]'",
-        note="Astra 深度 + RGB 话题",
+        start=SH + "~/start_astra.sh", stop=SH + "'pkill -f astra_camera_nod[e]; pkill -f uvc_camera_nod[e]'",
+        note="调 start_astra.sh（Astra 深度 + RGB）",
     ),
     dict(
         name="fuse", label="雷达+深度融合画面", check=("fuse_[v]iew.py", 8093, HOME + "/fuse.log"),
@@ -72,6 +71,29 @@ COMPS = [
 ]
 BY_NAME = {c["name"]: c for c in COMPS}
 START_ORDER = ["slam", "camera", "fuse", "cam", "bridge"]
+
+
+# ---------------------------------------------------------------- 建图模式
+# radar: hector 订阅 /scan        -> ~/slam_ctl.sh start
+# fused: hector 订阅 /scan_fused  -> ~/slam2_ctl.sh start（雷达+深度融合）
+MODES = {
+    "radar": dict(label="纯雷达", script=SH + "~/slam_ctl.sh start", topic="scan"),
+    "fused": dict(label="雷达+深度融合", script=SH + "~/slam2_ctl.sh start", topic="scan_fused"),
+}
+
+
+def detect_mode():
+    """看 hector 进程的命令行里订的是哪个话题"""
+    if DRY:
+        return "radar"
+    code, out = sh("pgrep -af 'hector_[m]apping' | head -1", timeout=10)
+    if not out or code != 0:
+        return ""
+    if "_scan_topic:=scan_fused" in out:
+        return "fused"
+    if "_scan_topic:=scan" in out:
+        return "radar"
+    return ""
 
 
 # ---------------------------------------------------------------- 工具
@@ -174,7 +196,7 @@ class H(BaseHTTPRequestHandler):
             up = sum(1 for c in comps if c["up"])
             return self._json({
                 "ok": True, "ts": time.strftime("%H:%M:%S"),
-                "host": _hostname(), "dry": DRY,
+                "host": _hostname(), "dry": DRY, "mode": detect_mode(),
                 "up": up, "total": len(comps),
                 "comps": comps,
             })
@@ -191,6 +213,20 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
+        if u.path == "/mode":
+            m = (qs.get("a") or [""])[0]
+            if m not in MODES:
+                return self._json({"error": "a 只能是 radar / fused"}, 400)
+            if not LOCK.acquire(blocking=False):
+                return self._json({"error": "另一个操作正在进行，请稍后"}, 409)
+            try:
+                code, out = sh(MODES[m]["script"], timeout=180)
+                LAST["mode"] = {"t": int(time.time()), "action": m, "ok": code == 0}
+                return self._json({"ok": code == 0, "mode": m,
+                                   "label": MODES[m]["label"],
+                                   "topic": MODES[m]["topic"], "out": out[-800:]})
+            finally:
+                LOCK.release()
         if u.path != "/cmd":
             return self._json({"error": "not found"}, 404)
         name = (qs.get("c") or [""])[0]

@@ -358,7 +358,7 @@ def demo_stack():
              ("fuse", "雷达+深度融合画面", 8093), ("cam", "相机画面服务", 8090),
              ("bridge", "遥控桥", 8099)]
     return {"ok": True, "dry": True, "up": len(names), "total": len(names),
-            "host": "demo", "ts": time.strftime("%H:%M:%S"),
+            "host": "demo", "ts": time.strftime("%H:%M:%S"), "mode": "radar",
             "comps": [{"name": n, "label": l, "note": "", "up": True,
                        "port": bool(p) if p else None, "port_no": p, "last": None}
                       for n, l, p in names]}
@@ -709,6 +709,8 @@ def live_page(user, robot):
   <span id=stackdots class=stackdots>读取中…</span>
   <button class=ghost onclick="stackCmd('all','start')">全部启动</button>
   <button class=ghost onclick="stackCmd('all','stop')">全部停止</button>
+  <span class=sep></span>
+  <button class=ghost id=b-mode onclick="setMode()">建图模式</button>
   <span class=flex></span>
   <button onclick=claim()>接管控制权</button>
   <button class=ghost onclick=rel()>释放</button>
@@ -920,10 +922,26 @@ function stackCmd(c,a){
       setTimeout(stack,1200);
     }).catch(function(e){document.getElementById('stackdots').textContent='请求失败';});
 }
+function setMode(){
+  var cur=(window._MODE||'radar');
+  var next=(cur==='fused'?'radar':'fused');
+  var nm={radar:'纯雷达建图',fused:'雷达+深度融合建图'}[next];
+  if(!TOK){alert('请先接管控制权');return}
+  if(!confirm('切换到「'+nm+'」？\n\n会重启建图程序，当前地图会中断（已保存的不会丢）。'))return;
+  document.getElementById('stackdots').textContent='切换中…约 20 秒';
+  q('/api/stack/mode?a='+next,{method:'POST',headers:{'X-Token':TOK}})
+    .then(function(x){
+      if(x.error){alert(x.error);stack();return}
+      setTimeout(stack,3000);
+    }).catch(function(){document.getElementById('stackdots').textContent='切换失败';});
+}
 function stack(){
   q('/api/stack').then(function(s){
     var el=document.getElementById('stackdots');
     if(s.error){el.innerHTML='<span style="color:#ff8b9a">栈服务未响应</span>';return}
+    window._MODE=s.mode||'radar';
+    var mb=document.getElementById('b-mode');
+    if(mb)mb.textContent={'fused':'融合建图 ✓','radar':'纯雷达 ✓'}[window._MODE]||'建图模式';
     el.innerHTML=(s.comps||[]).map(function(c){
       return '<span class=st title="'+c.label+(c.note?' · '+c.note:'')+'">'+
         '<i class="dot '+(c.up?'on':'off')+'"></i>'+c.label+'</span>';
@@ -1166,6 +1184,23 @@ class H(BaseHTTPRequestHandler):
                 return self._json(r)
             except Exception as e:
                 audit(s["u"], "stack:%s:%s" % (a, c), str(e)[:80], False)
+                return self._json({"error": "传感器栈服务未响应: %s" % e})
+        if p == "/api/stack/mode":
+            st = lease_state()
+            if st["token"] != tok:
+                return self._json({"error": "没有控制权，请先接管"})
+            m = (qs.get("a") or ["radar"])[0]
+            if m not in ("radar", "fused"):
+                return self._json({"error": "a 只能是 radar / fused"})
+            if DEMO:
+                audit(s["u"], "mode:" + m, "demo", True)
+                return self._json({"ok": True, "demo": True, "mode": m})
+            try:
+                r = stack_proxy("/mode?a=" + m, "POST", timeout=240)
+                audit(s["u"], "mode:" + m, str(r.get("ok")), bool(r.get("ok")))
+                return self._json(r)
+            except Exception as e:
+                audit(s["u"], "mode:" + m, str(e)[:80], False)
                 return self._json({"error": "传感器栈服务未响应: %s" % e})
         if p == "/api/rec/start":
             st = lease_state()

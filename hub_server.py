@@ -21,7 +21,14 @@ import sys
 import threading
 import urllib.request
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+try:
+    from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
+except ImportError:                      # Python 3.6（机器人上是 3.6.9）
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from socketserver import ThreadingMixIn
+
+    class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
 from urllib.parse import parse_qs, unquote, urlparse
 
 if getattr(sys, "frozen", False):

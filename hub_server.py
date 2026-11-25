@@ -237,8 +237,8 @@ def demo_map(t):
     ang0 = t * 0.42                      # 慢慢转
     ox = 1.60 * math.cos(t * 0.18)        # 绕房间走一圈
     oy = 1.10 * math.sin(t * 0.18)
-    for i in range(240):
-        a = ang0 + i * (2 * math.pi / 240)
+    for i in range(720):
+        a = ang0 + i * (2 * math.pi / 720)
         dx, dy = math.cos(a), math.sin(a)
         r = _ray(ox, oy, dx, dy)
         steps = int(r / res)
@@ -270,16 +270,23 @@ def demo_fuse(t):
     C = S / 2
     rgb = bytearray(b"\x0b\x0f\x14" * (S * S))
     import math as _m
-    for i in range(200):
-        a = t * 0.4 + i * (2 * _m.pi / 200)
+    for i in range(360):
+        a = t * 0.4 + i * (2 * _m.pi / 360)
         dx, dy = _m.cos(a), _m.sin(a)
         r = _ray(0, 0, dx, dy)
-        for k in range(6):
-            rr = r * (0.55 + 0.09 * k)
+        for k in range(4):
+            rr = r * (0.45 + 0.13 * k)
             px, py = int(C + rr * 40 * dx), int(C + rr * 40 * dy)
             if 0 <= px < S and 0 <= py < S:
                 o = (py * S + px) * 3
-                rgb[o:o + 3] = bytes((240, 150, 40))
+                rgb[o:o + 3] = bytes((110, 72, 24))
+        px, py = int(C + r * 40 * dx), int(C + r * 40 * dy)
+        for ddy in (0, 1):
+            for ddx in (0, 1):
+                X, Y = px + ddx, py + ddy
+                if 0 <= X < S and 0 <= Y < S:
+                    o = (Y * S + X) * 3
+                    rgb[o:o + 3] = bytes((255, 168, 60))
     for i in range(160):
         d = 0.9 + 2.4 * abs(_m.sin(i * 0.31 + t))
         a = t * 0.4 - 0.5 + i * 0.0065

@@ -1147,6 +1147,32 @@ class H(BaseHTTPRequestHandler):
         return self._send(404, "404")
 
 
+def _start_reloader():
+    """--reload: 源码改动后自动重启进程（开发用）"""
+    if getattr(sys, "frozen", False):
+        return
+    try:
+        path = os.path.abspath(__file__)
+        if not os.path.isfile(path):
+            return
+    except Exception:
+        return
+
+    def _watch():
+        m = os.path.getmtime(path)
+        while True:
+            time.sleep(2)
+            try:
+                n = os.path.getmtime(path)
+            except OSError:
+                continue
+            if n != m:
+                print("[reload] hub_server.py changed, restarting...", flush=True)
+                os.execv(sys.executable, [sys.executable] + sys.argv[:])
+
+    threading.Thread(target=_watch, daemon=True).start()
+
+
 def main():
     port = CFG["port"]
     for i, a in enumerate(sys.argv):
@@ -1165,6 +1191,9 @@ def main():
         daemon_threads = True
         allow_reuse_address = True
         request_queue_size = 64
+    if "--reload" in sys.argv:
+        _start_reloader()
+
     srv = Srv(("0.0.0.0", port), H)
     print("XT-HUB on http://0.0.0.0:%d  (dry-run=%s)" % (port, DRY))
     try:

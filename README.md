@@ -77,6 +77,32 @@ POST /api/stack/cmd?c=all&a=start    -> 需要控制权（90s 租约）
 > 顺序由 `START_ORDER` 决定：`slam → camera → fuse → cam → bridge`；停止时反向。
 > 启停是**串行**的（进程内 `LOCK`），两个人在网页上同时点不会打架。
 
+
+## 3D 点云地图查看
+
+控制台顶栏点 **「3D 地图 ↗」**（或直接访问 `/3d`），左边列出车上 `~/3d_maps/` 里所有三维地图，右边 iframe 直接看：
+
+- 拖拽 = 旋转，滚轮 = 缩放，`R` = 重置
+- 橙 = 雷达点，蓝→红 = 深度点（按高度着色）
+- 每一项还带静态 PNG 和 `.pcd` 下载链接（给 CloudCompare / MeshLab 用）
+
+```bash
+# 找哪个目录（按顺序）：
+#   环境变量 XTHUB_3D_DIR
+#   ~/3d_maps
+#   <hub_server.py 所在目录>/3d_maps
+#   <上级>/3d_maps           <上级>/一键脚本/3d_maps
+XTHUB_3D_DIR=/home/xtrobot/3d_maps python3 hub_server.py --port 8000
+
+# 接口
+GET /api/maps3d                     -> 列表（名称/时间/点数/大小）
+GET /maps3d/<file>.html|.png|.pcd   -> 单文件（做了 basename 校验，防目录穿越）
+```
+
+生成好的 html 是**完全自包含**的（点云内嵌、canvas 2D 绘制、不引用外部资源），所以直接放进去就能看，断网也行。
+
+把 PC 上的 3D 地图发到车上：把文件**拖到 `upload-3d.bat` 上**即可（自动读 `robot-ip.txt`，scp 到 `~/3d_maps/`）。
+
 ## 改了代码怎么让它生效
 
 `hub_server.py` 是进程启动时加载的，**改完必须重启**。三种方式：

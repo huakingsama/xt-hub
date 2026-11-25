@@ -14,6 +14,7 @@ import hmac
 import json
 import math
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -21,7 +22,7 @@ import threading
 import urllib.request
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 if getattr(sys, "frozen", False):
     # PyInstaller onefile：__file__ 在临时解包目录，配置要跟着 exe 走
@@ -340,6 +341,77 @@ def _bridge(path, payload=None, timeout=1.6):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
+def _home():
+    return os.path.expanduser("~")
+
+
+def dir3d():
+    """找 3d_maps 目录：环境变量优先，其次 ~/3d_maps、脚本同级、一键脚本下"""
+    cands = [os.environ.get("XTHUB_3D_DIR", ""), os.path.join(_home(), "3d_maps"),
+             os.path.join(HERE, "3d_maps"), os.path.join(HERE, "..", "3d_maps"),
+             os.path.join(HERE, "..", "一键脚本", "3d_maps")]
+    for d in cands:
+        if d and os.path.isdir(d):
+            return os.path.abspath(d)
+    return ""
+
+
+def list3d():
+    """列出可看的 3D 地图（*.html，排除 index.html）"""
+    d = dir3d()
+    if not d:
+        return {"ok": False, "dir": "", "items": [], "error": "没找到 3d_maps 目录"}
+    items = []
+    try:
+        for fn in os.listdir(d):
+            if not fn.endswith(".html") or fn == "index.html":
+                continue
+            fp = os.path.join(d, fn)
+            try:
+                stt = os.stat(fp)
+            except OSError:
+                continue
+            base = fn[:-5]
+            pts = 0
+            try:
+                if stt.st_size < 4 * 1024 * 1024:
+                    txt = open(fp, "rb").read().decode("utf-8", "replace")
+                    i = txt.find("const P=[[")
+                    j = txt.find("]]", i) if i >= 0 else -1
+                    if i >= 0 and j > i:
+                        pts = txt[i + 10:j].count("], [") + 1
+            except Exception:
+                pass
+            items.append({
+                "name": fn, "ts": time.strftime("%Y-%m-%d %H:%M", time.localtime(stt.st_mtime)),
+                "kb": round(stt.st_size / 1024), "points": pts,
+                "png": os.path.exists(os.path.join(d, base + ".png")),
+                "pcd": os.path.exists(os.path.join(d, base + ".pcd")),
+            })
+    except OSError as e:
+        return {"ok": False, "dir": d, "items": [], "error": str(e)}
+    items.sort(key=lambda x: x["name"], reverse=True)
+    return {"ok": True, "dir": d, "items": items}
+
+
+def read3d(name):
+    """安全读取 3d_maps 里的单个文件（防目录穿越）"""
+    d = dir3d()
+    if not d:
+        return None, None
+    safe = os.path.basename(name)
+    if safe != name or not re.match(r"^[A-Za-z0-9_.\-]+$", safe):
+        return None, None
+    fp = os.path.join(d, safe)
+    if not os.path.isfile(fp):
+        return None, None
+    ext = os.path.splitext(safe)[1].lower()
+    ctype = {".html": "text/html; charset=utf-8", ".png": "image/png",
+             ".pcd": "application/octet-stream"}.get(ext, "application/octet-stream")
+    with open(fp, "rb") as f:
+        return f.read(), ctype
+
+
 STACK_PORT = int(os.environ.get("XTHUB_STACK_PORT", "8100"))
 
 
@@ -639,6 +711,8 @@ CSS2 = """
 .kbd{font-size:11px;color:#5d6875;letter-spacing:.3px}
 input[type=range]{width:84px;accent-color:#4f8cff;vertical-align:-3px}
 .chip{font-size:11.5px;color:#8b95a3;border:1px solid #2b3542;border-radius:99px;padding:2px 9px}
+.lk3{color:#7ac2ff;text-decoration:none;font-size:12px;margin-left:6px}
+.lk3:hover{text-decoration:underline}
 .stackdots{display:inline-flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#9aa5b3}
 .stackdots .st{display:inline-flex;align-items:center;gap:4px}
 .stackdots .dot{width:7px;height:7px}
@@ -676,6 +750,7 @@ def live_page(user, robot):
     <span class=dot id=d-hec></span><b id=v-hec>建图</b>
     <span class=sep></span>
     <b style="color:#7d8794">__MODE__</b>
+    <span class=sep></span><a class=lk3 href="/3d" target="_blank">3D 地图 ↗</a>
   </div>
   <div class=bar>
     <span class=chip id=v-tel>键盘待命</span>
@@ -971,6 +1046,62 @@ setInterval(function(){if(TOK)q('/api/lease/heartbeat',{method:'POST',headers:{'
     return tpl
 
 
+def page3d(user=None):
+    body = """<div class=top><b>3D 点云地图</b>
+  <a class=lk href=/live>← 返回控制台</a>
+  <span class=flex></span><span id=dir class=dim></span></div>
+<div class=two>
+  <div class=list id=list>加载中…</div>
+  <div class=view><iframe id=fr src="about:blank" title="3D"></iframe>
+    <div id=empty class=empty>从左边选一个地图开始看<br><span class=dim>拖拽旋转 · 滚轮缩放 · R 重置</span></div></div>
+</div>
+<script>
+function pick(n){
+  document.getElementById('fr').src='/maps3d/'+encodeURIComponent(n);
+  document.getElementById('empty').style.display='none';
+  [].forEach.call(document.querySelectorAll('.row'),function(r){
+    r.className='row'+(r.dataset.n===n?' on':'')});
+}
+function load(){
+  fetch('/api/maps3d',{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){
+    var el=document.getElementById('list');
+    document.getElementById('dir').textContent=s.dir||'';
+    if(!s.ok||!s.items.length){
+      el.innerHTML='<div class=dim style="padding:14px">'+(s.error||'还没有 3D 地图')+
+        '<br><br>在车上跑一次三维采集：<br><code>41-3d-map.bat</code> 或 <code>run3d.sh</code></div>';return}
+    el.innerHTML=s.items.map(function(it){
+      return '<div class=row data-n="'+it.name+'" onclick="pick(\''+it.name+'\')">'+
+        '<div class=nm>'+it.name.replace('.html','')+'</div>'+
+        '<div class=meta>'+it.ts+' · '+(it.points||'—')+' 点 · '+it.kb+' KB'+
+        (it.png?' · <a href="/maps3d/'+it.name.replace('.html','.png')+'" target=_blank>静态图</a>':'')+
+        (it.pcd?' · <a href="/maps3d/'+it.name.replace('.html','.pcd')+'">pcd</a>':'')+
+        '</div></div>'}).join('');
+  }).catch(function(e){document.getElementById('list').textContent='读取失败 '+e});
+}
+load();
+</script>"""
+    return page("3D 地图", body, user, extra="""
+<style>
+.top{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid #232733;font-size:14px}
+.top b{color:#fff;font-weight:600}.lk{color:#7ac2ff;text-decoration:none;font-size:13px}
+.flex{flex:1}.dim{color:#6f7686;font-size:12px}
+.two{display:grid;grid-template-columns:340px 1fr;gap:0;height:calc(100vh - 49px)}
+.list{overflow:auto;border-right:1px solid #232733;padding:8px}
+.row{padding:10px 12px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.row:hover{background:#161a23;border-color:#242a36}
+.row.on{background:#12243a;border-color:#2d5f96}
+.nm{color:#e6e9f0;font-size:13px;margin-bottom:3px}
+.meta{color:#6f7686;font-size:11.5px}.meta a{color:#7ac2ff;text-decoration:none}
+.view{position:relative;background:#0a0a0e}
+.view iframe{width:100%;height:100%;border:0;display:block}
+.empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#7d8296;font-size:14px;line-height:2;pointer-events:none}
+code{background:#141821;padding:2px 6px;border-radius:4px;color:#9fc7ff}
+@media(max-width:900px){.two{grid-template-columns:1fr;height:auto}
+ .view{height:62vh}.list{max-height:34vh;border-right:0;border-bottom:1px solid #232733}}
+</style>""")
+
+
 def admin_page(users, lease):
     rows = "".join(
         "<tr><td>%s</td><td>%s</td><td><form method=post action=/api/user/del style=display:inline>"
@@ -1062,6 +1193,21 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, page("登录", LOGIN % "<div class=hint>请先登录</div>"))
         if p == "/live":
             return self._send(200, page("控制台", live_page(s, CFG["robot"]) + "", s))
+        if p == "/3d":
+            return self._send(200, page3d(s))
+        if p == "/api/maps3d":
+            return self._json(list3d())
+        if p.startswith("/maps3d/"):
+            data, ctype = read3d(unquote(p[len("/maps3d/"):]))
+            if data is None:
+                return self._send(404, "not found")
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if p == "/admin":
             if s["r"] != "admin":
                 return self._send(403, page("拒绝", "<div class=card>需要管理员权限</div>", s))

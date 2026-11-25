@@ -69,16 +69,26 @@ http://<robot-ip>:8000
 
 Windows 下也可以双击 `deploy.bat`，它会自动找 `robot-ip.txt`、上传、装服务、自检。
 
-### 方式三：单文件可执行程序
+### 方式三：打成单文件程序
+
+**A. `.pyz`（无需联网、不需要 pip，任何 python3 都能跑）**
 
 ```bash
-# 本地构建（需要 pyinstaller）
-build-exe.bat
-
-# 或从 GitHub Releases 下载现成的 xthub.exe，双击运行
+bash build-pyz.sh          # Linux / macOS
+build-pyz.bat              # Windows
+python3 xthub.pyz --demo --dry-run --port 18300
 ```
 
-`xthub.exe --demo` 直接起一个演示服务，不装 Python 也能跑。
+**B. `.exe`（连 Python 都不需要）**
+
+- 本地：`build-exe.bat`（需要 `pip install pyinstaller`）
+- 云端：推一个 `v*` tag，GitHub Actions 自动构建并把 `xthub.exe` 挂到 Release
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+产物在 Actions 的 Artifacts，打 tag 时同时挂 Release。双击 `xthub.exe --demo` 即可跑。
 
 ## 命令行参数
 

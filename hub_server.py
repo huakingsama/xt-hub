@@ -27,7 +27,10 @@ if getattr(sys, "frozen", False):
     # PyInstaller onefile：__file__ 在临时解包目录，配置要跟着 exe 走
     HERE = os.path.dirname(os.path.abspath(sys.executable))
 else:
-    HERE = os.path.dirname(os.path.abspath(__file__))
+    _f = os.path.abspath(__file__)
+    HERE = os.path.dirname(_f)
+    if not os.path.isdir(HERE):          # zipapp: __file__ 在 .pyz 压缩包内部
+        HERE = os.path.dirname(HERE)
 CONF = os.path.join(HERE, "config.json")
 AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()

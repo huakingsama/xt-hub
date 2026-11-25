@@ -648,6 +648,31 @@ def _go(url, msg="正在跳转…"):
         "</body></html>" % (url, msg, url, url))
 
 
+def lan_ips():
+    """列本机所有可能被局域网访问到的 IPv4（不依赖第三方库）"""
+    out = []
+    try:
+        import socket as _s
+        for info in _s.getaddrinfo(_s.gethostname(), None, _s.AF_INET):
+            ip = info[4][0]
+            if ip not in out and not ip.startswith("127."):
+                out.append(ip)
+    except Exception:
+        pass
+    try:
+        import socket as _s
+        t = _s.socket(_s.AF_INET, _s.SOCK_DGRAM)
+        t.settimeout(0.2)
+        t.connect(("223.5.5.5", 53))
+        ip = t.getsockname()[0]
+        t.close()
+        if ip not in out and not ip.startswith("127."):
+            out.insert(0, ip)
+    except Exception:
+        pass
+    return out
+
+
 def page(title, body, user=None, extra=""):
     who = ""
     if user:
@@ -1509,7 +1534,13 @@ def main():
         _start_reloader()
 
     srv = Srv(("0.0.0.0", port), H)
-    print("XT-HUB on http://0.0.0.0:%d  (dry-run=%s)" % (port, DRY))
+    print("XT-HUB on http://0.0.0.0:%d  (dry-run=%s demo=%s)" % (port, DRY, DEMO))
+    print("")
+    print("  本机打开 : http://127.0.0.1:%d" % port)
+    for ip in lan_ips():
+        print("  局域网给 : http://%s:%d" % (ip, port))
+    print("  别人连不上时检查：同 WiFi？Windows 防火墙放行 %d 端口？" % port)
+    print("")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

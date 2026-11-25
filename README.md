@@ -238,7 +238,8 @@ git tag v1.0.0 && git push origin v1.0.0
 | `--port 8000` | 监听端口 |
 | `--demo` | 演示模式：合成地图/融合/相机三路画面，不连机器人 |
 | `--dry-run` | 演练模式：指令只回显不执行，适合培训和评审 |
-| `--user <name> <pw> [role]` | 新增/重置用户（role: admin / operator / viewer） |
+| `--init-admin <pw>` | 重设 admin 密码（不改动其他人） |
+| `--reload` | 改代码自动重启（2 秒轮询文件时间） |
 
 首次运行会自动生成 `config.json` 并创建 `admin / admin123`，**请立刻改密码**。
 

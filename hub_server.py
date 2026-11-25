@@ -379,7 +379,8 @@ def list3d():
                     i = txt.find("const P=[[")
                     j = txt.find("]]", i) if i >= 0 else -1
                     if i >= 0 and j > i:
-                        pts = txt[i + 10:j].count("], [") + 1
+                        seg = txt[i + 10:j]
+                        pts = seg.count("], [") + seg.count("],[") + 1
             except Exception:
                 pass
             items.append({
@@ -1005,6 +1006,7 @@ function cap3d(){
   q('/api/stack/capture?secs=30',{method:'POST',headers:{'X-Token':TOK}})
     .then(function(x){
       if(x.error){alert(x.error);return}
+      if(x.demo){alert('演示模式：真机上会真的采集 '+((x.secs)||30)+' 秒，并生成在「3D 地图」里。');return}
       b.disabled=true; b.textContent='采集中…';
       setTimeout(capPoll,1500);
     }).catch(function(){});

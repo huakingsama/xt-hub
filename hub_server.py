@@ -836,6 +836,7 @@ def live_page(user, robot):
 
 <script>
 var USR='__USER__', TOK=null, LIN=0.12, ANG=0.8, ST={}, GOAL=null, ECHO=__ECHO__, KEY={};
+try{TOK=sessionStorage.getItem('xtok')||null}catch(e){}   /* 刷新页面不丢控制权 */
 function q(u,o){return fetch(u,o).then(function(r){return r.json()})}
 function out(t){document.getElementById('out').textContent=t}
 function zoom(id){document.getElementById(id).classList.toggle('zoom')}
@@ -873,13 +874,20 @@ function paint(s){
   else{h.className='pill p-off';h.textContent='无人驾驶';e.textContent='';}
 }
 function lease(){q('/api/lease').then(function(s){paint(s);
-  if(s.holder===USR){TOK=s.token}else if(!s.holder){TOK=null}})}
+  if(!s.holder){TOK=null;try{sessionStorage.removeItem('xtok')}catch(e){}}
+  else if(s.holder===USR){
+    var keep=null;try{keep=sessionStorage.getItem('xtok')}catch(e){}
+    if(keep && keep===s.token){TOK=s.token}
+  }})}
 function claim(){q('/api/lease/claim',{method:'POST'}).then(function(s){
-  if(s.error){out('接管失败：'+s.error);return} TOK=s.token;paint(s);
+  if(s.error){out('接管失败：'+s.error);return} TOK=s.token;
+  try{sessionStorage.setItem('xtok',TOK)}catch(e){};paint(s);
   out('已接管。W/S 前后、A/D 转向、空格/松手停；点地图下发目标。')})}
 function rel(){fetch('/api/teleop',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOK||''},
   body:JSON.stringify({lin:0,ang:0})}).catch(function(){});
-  q('/api/lease/release',{method:'POST'}).then(function(s){TOK=null;paint(s);out('已释放控制权')})}
+  q('/api/lease/release',{method:'POST',headers:{'X-Token':TOK||''}}).then(function(s){
+    TOK=null;try{sessionStorage.removeItem('xtok')}catch(e){}
+    paint(s);out('已释放控制权')})}
 function act(a){ if(!TOK){out('请先接管控制权');return}
   if(a==='stop'&&!confirm('确认停止建图？'))return;
   out('执行 '+a+' …');
@@ -1352,7 +1360,7 @@ class H(BaseHTTPRequestHandler):
                 return self._json(dict(LEASE))
         if p == "/api/lease/release":
             with LOCK:
-                if LEASE["token"] == tok or s["r"] == "admin":
+                if LEASE["token"] == tok or LEASE["holder"] == s["u"] or s["r"] == "admin":
                     LEASE.update({"holder": None, "token": None, "exp": 0})
                     audit(s["u"], "release", "", True)
                 return self._json(lease_state())

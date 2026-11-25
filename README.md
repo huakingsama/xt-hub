@@ -72,6 +72,9 @@ hub 侧代理并把按钮画进网页：
 ```
 GET  /api/stack                      -> 五个组件的 up / 端口状态
 POST /api/stack/cmd?c=all&a=start    -> 需要控制权（90s 租约）
+POST /api/stack/mode?a=radar|fused   -> 切建图模式（同上，需要控制权）
+GET  /api/stack/capture              -> 三维采集进度（phase / elapsed / out）
+POST /api/stack/capture?secs=30      -> 开始采集三维（需要控制权）
 ```
 
 > 顺序由 `START_ORDER` 决定：`slam → camera → fuse → cam → bridge`；停止时反向。
@@ -102,6 +105,31 @@ GET /maps3d/<file>.html|.png|.pcd   -> 单文件（做了 basename 校验，防�
 生成好的 html 是**完全自包含**的（点云内嵌、canvas 2D 绘制、不引用外部资源），所以直接放进去就能看，断网也行。
 
 把 PC 上的 3D 地图发到车上：把文件**拖到 `upload-3d.bat` 上**即可（自动读 `robot-ip.txt`，scp 到 `~/3d_maps/`）。
+
+### 一键采集一份三维地图
+
+控制台操作条上的 **「采集三维」** 按钮，等价于在车上跑一遍：
+
+```bash
+~/run3d.sh        # pkill cloud3d -> 起 cloud3d.py 累积点云 -> 停 -> 生成 ~/data/map3d.pcd
+python3 ~/make3d_html.py ~/data/map3d.pcd ~/3d_maps    # 转成自包含 html
+```
+
+- 点了按钮会问时长（默认 30 秒）。**采集期间慢慢走一圈**，走的路越多点云越完整
+- 页面上实时显示「采集中 12/30s」，结束后弹窗告诉你生成的 html 文件名
+- 结束自动出现在 `/3d` 列表里，也会作为下一次建图的对照
+
+`make3d_html.py` 是**纯标准库**实现（不用 numpy / PIL），车上 python2.7 也能跑；
+它把点云拍平成 `canvas` 里的二维投影再按高度上色，所以 html 只有几百 KB，打开即看。
+
+```bash
+# 车上手动跑（不经网页）
+python3 make3d_html.py ~/data/map3d.pcd ~/3d_maps --name my_lab
+```
+
+> 采集用的是 `/home/xtrobot/cloud3d.py`（rospy + tf，把深度点云按 `map` 位姿转到地图系，
+> 5 cm 体素去重，PCD 里 `i` 字段区分来源：1 = 雷达，2 = 深度相机）。
+> 所以**必须先起传感器栈**（`slam` + `camera` 两个组件至少要 running），否则没有点云。
 
 ## 改了代码怎么让它生效
 

@@ -786,6 +786,7 @@ def live_page(user, robot):
   <button class=ghost onclick="stackCmd('all','stop')">全部停止</button>
   <span class=sep></span>
   <button class=ghost id=b-mode onclick="setMode()">建图模式</button>
+  <button class=ghost id=b-cap onclick="cap3d()">采集三维</button>
   <span class=flex></span>
   <button onclick=claim()>接管控制权</button>
   <button class=ghost onclick=rel()>释放</button>
@@ -997,6 +998,32 @@ function stackCmd(c,a){
       setTimeout(stack,1200);
     }).catch(function(e){document.getElementById('stackdots').textContent='请求失败';});
 }
+function cap3d(){
+  if(!TOK){alert('请先接管控制权');return}
+  if(!confirm('开始采集三维点云（默认 30 秒）？\n\n期间请推着车/开车走一圈，结束后到「3D 地图」看。'))return;
+  var b=document.getElementById('b-cap');
+  q('/api/stack/capture?secs=30',{method:'POST',headers:{'X-Token':TOK}})
+    .then(function(x){
+      if(x.error){alert(x.error);return}
+      b.disabled=true; b.textContent='采集中…';
+      setTimeout(capPoll,1500);
+    }).catch(function(){});
+}
+function capPoll(){
+  var b=document.getElementById('b-cap');
+  q('/api/stack/capture').then(function(s){
+    var c=(s&&s.cap)||{};
+    if(c.on){
+      var el=c.elapsed||0;
+      b.textContent='采集中 '+el+'/'+(c.secs||30)+'s';
+      setTimeout(capPoll,1000);return;
+    }
+    b.disabled=false;
+    if(c.ok===true){b.textContent='采集三维'; alert('三维地图已生成：'+c.out+'\n\n去「3D 地图」页看');}
+    else if(c.ok===false){b.textContent='采集三维'; alert('采集失败：\n'+(c.log||c.phase||'未知'));}
+    else {b.textContent='采集三维';}
+  }).catch(function(){ b.disabled=false; b.textContent='采集三维'; });
+}
 function setMode(){
   var cur=(window._MODE||'radar');
   var next=(cur==='fused'?'radar':'fused');
@@ -1195,6 +1222,13 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, page("控制台", live_page(s, CFG["robot"]) + "", s))
         if p == "/3d":
             return self._send(200, page3d(s))
+        if p == "/api/stack/capture":
+            if DEMO:
+                return self._json({"ok": True, "cap": {"on": False, "phase": "演示模式", "ok": None}})
+            try:
+                return self._json(stack_proxy("/capture3d"))
+            except Exception as e:
+                return self._json({"error": "传感器栈服务未响应: %s" % e})
         if p == "/api/maps3d":
             return self._json(list3d())
         if p.startswith("/maps3d/"):
@@ -1330,6 +1364,21 @@ class H(BaseHTTPRequestHandler):
                 return self._json(r)
             except Exception as e:
                 audit(s["u"], "stack:%s:%s" % (a, c), str(e)[:80], False)
+                return self._json({"error": "传感器栈服务未响应: %s" % e})
+        if p == "/api/stack/capture":
+            st = lease_state()
+            if st["token"] != tok:
+                return self._json({"error": "没有控制权，请先接管"})
+            secs = (qs.get("secs") or ["30"])[0]
+            if DEMO:
+                audit(s["u"], "capture3d", secs + "s", True)
+                return self._json({"ok": True, "demo": True, "secs": secs})
+            try:
+                r = stack_proxy("/capture3d?secs=" + secs, "POST", timeout=30)
+                audit(s["u"], "capture3d", secs + "s", bool(r.get("ok")))
+                return self._json(r)
+            except Exception as e:
+                audit(s["u"], "capture3d", str(e)[:60], False)
                 return self._json({"error": "传感器栈服务未响应: %s" % e})
         if p == "/api/stack/mode":
             st = lease_state()

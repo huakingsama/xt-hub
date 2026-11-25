@@ -96,6 +96,46 @@ def detect_mode():
     return ""
 
 
+# ---------------------------------------------------------------- 三维采集
+CAP = {"on": False, "t0": 0, "secs": 0, "phase": "", "out": "", "log": "", "ok": None}
+CAP_LOCK = threading.Lock()
+PCD = HOME + "/data/map3d.pcd"
+MAP3D_DIR = HOME + "/3d_maps"
+
+
+def _cap_set(**kw):
+    CAP.update(kw)
+
+
+def capture_worker(secs):
+    try:
+        _cap_set(on=True, t0=int(time.time()), secs=secs, phase="准备", out="", log="", ok=None)
+        sh("rm -f %s" % PCD, timeout=10)
+        _cap_set(phase="启动 cloud3d")
+        sh("pkill -9 -f cloud3d 2>/dev/null; true", timeout=10)
+        code, out = sh("cd ~ && setsid nohup python cloud3d.py > /tmp/c3d.log 2>&1 < /dev/null &", timeout=20)
+        _cap_set(phase="累积点云 %d 秒" % secs)
+        time.sleep(secs)
+        _cap_set(phase="收尾")
+        sh("pkill -9 -f cloud3d 2>/dev/null; true", timeout=10)
+        time.sleep(1)
+        if not os.path.exists(PCD):
+            _cap_set(phase="失败", ok=False, log="没生成 %s（cloud3d 可能没起来）\n" % PCD + tail_file("/tmp/c3d.log"))
+            return
+        _cap_set(phase="生成 HTML")
+        code, out = sh("python ~/make3d_html.py %s %s" % (PCD, MAP3D_DIR), timeout=120)
+        if code != 0:
+            _cap_set(phase="失败", ok=False, log=out)
+            return
+        m = re.search(r"/[^\s]*map3d_[0-9_]+(\w*)\.html|(map3d_[0-9_]+\.html)", out)
+        name = m.group(0) if m else ""
+        _cap_set(phase="完成", ok=True, out=name, log=out)
+    except Exception as e:
+        _cap_set(phase="异常", ok=False, log=str(e))
+    finally:
+        _cap_set(on=False)
+
+
 # ---------------------------------------------------------------- 工具
 def sh(cmd, timeout=90):
     """跑一条 shell，返回 (code, 输出尾部)"""
@@ -201,6 +241,12 @@ class H(BaseHTTPRequestHandler):
                 "comps": comps,
             })
 
+        if p == "/capture3d":
+            st = dict(CAP)
+            if st["t0"] and st["on"]:
+                st["elapsed"] = int(time.time()) - st["t0"]
+            return self._json({"ok": True, "cap": st, "dir": MAP3D_DIR})
+
         if p == "/log":
             c = BY_NAME.get((qs.get("c") or [""])[0])
             if not c:
@@ -213,6 +259,15 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         qs = parse_qs(u.query)
+        if u.path == "/capture3d":
+            secs = int((qs.get("secs") or ["30"])[0])
+            secs = max(5, min(180, secs))
+            if not CAP_LOCK.acquire(blocking=False):
+                return self._json({"error": "已经在采集了"}, 409)
+            t = threading.Thread(target=lambda: (capture_worker(secs), CAP_LOCK.release()))
+            t.daemon = True
+            t.start()
+            return self._json({"ok": True, "started": True, "secs": secs})
         if u.path == "/mode":
             m = (qs.get("a") or [""])[0]
             if m not in MODES:

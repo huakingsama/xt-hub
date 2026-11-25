@@ -1,0 +1,27 @@
+# 运行时产生的文件，不要提交
+config.json
+config.json.tmp
+audit.jsonl
+records/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# PyInstaller
+build/
+dist/
+*.spec
+*.manifest
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本地测试产物
+*.html.bak
+test_*.py

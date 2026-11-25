@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  exe:
+    name: Windows exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Build single-file exe
+        run: >
+          python -m PyInstaller --onefile --console --name xthub
+          --add-data "LICENSE;."
+          hub_server.py
+
+      - name: Smoke test (demo mode)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath .\dist\xthub.exe `
+               -ArgumentList "--demo","--dry-run","--port","18300" -PassThru
+          Start-Sleep -Seconds 4
+          $r = Invoke-WebRequest -Uri http://127.0.0.1:18300/healthz -UseBasicParsing
+          Write-Host "healthz:" $r.Content
+          if ($r.Content -notmatch "ok") { throw "healthz failed" }
+          $l = Invoke-WebRequest -Uri http://127.0.0.1:18300/live -UseBasicParsing
+          Write-Host "live:" $l.StatusCode $l.RawContentLength
+          if ($l.RawContentLength -lt 5000) { throw "live page too small" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xthub-windows
+          path: dist/xthub.exe
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/xthub.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint:
+    name: syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: |
+          python -m py_compile hub_server.py
+          echo "ok"

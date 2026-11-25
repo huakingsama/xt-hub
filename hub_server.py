@@ -36,6 +36,7 @@ CONF = os.path.join(HERE, "config.json")
 AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()
 
+VER = "v1.1"          # 版本号：页面和启动横幅都会显示，方便确认"是不是同一版"
 DRY = "--dry-run" in sys.argv
 
 # ---------------------------------------------------------------- config ----
@@ -687,8 +688,10 @@ def page(title, body, user=None, extra=""):
             "<title>%s · XT-R1</title><style>%s</style>%s</head><body><div class=wrap>"
             "<div class=bar style='justify-content:space-between;margin-bottom:14px'>"
             "<div><h1>XT-R1 协作控制台</h1><div class=sub style='margin:0'>多人共享机器人 · 读是广播，写是抢占</div></div>"
-            "<div>%s</div></div>%s</div></body></html>"
-            % (title, CSS + CSS2, extra, who, body))
+            "<div>%s</div></div>%s"
+            "<div style='text-align:center;color:#4a5563;font-size:11px;margin:18px 0 6px'>XT-HUB %s</div>"
+            "</div></body></html>"
+            % (title, CSS + CSS2, extra, who, body, VER))
 
 
 LOGIN = """
@@ -1542,7 +1545,7 @@ def main():
         _start_reloader()
 
     srv = Srv(("0.0.0.0", port), H)
-    print("XT-HUB on http://0.0.0.0:%d  (dry-run=%s demo=%s)" % (port, DRY, DEMO))
+    print("XT-HUB %s on http://0.0.0.0:%d  (dry-run=%s demo=%s)" % (VER, port, DRY, DEMO))
     print("")
     print("  本机打开 : http://127.0.0.1:%d" % port)
     for ip in lan_ips():

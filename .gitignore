@@ -26,3 +26,4 @@ Thumbs.db
 *.html.bak
 test_*.py
 nohup.out
+jobs.json

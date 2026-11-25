@@ -48,6 +48,25 @@ curl -X POST "localhost:8100/cmd?c=fuse&a=restart"
 curl -s "localhost:8100/log?c=slam&n=30"
 ```
 
+
+### 建图模式：纯雷达 ⇄ 雷达+深度融合
+
+网页上「建图模式」按钮一键切换，本质上是在换 hector 订阅的话题：
+
+| 模式 | 订阅 | 背后脚本 |
+|---|---|---|
+| 纯雷达 | `/scan` | `~/slam_ctl.sh start` |
+| 雷达+深度融合 | `/scan_fused` | `~/slam2_ctl.sh start` |
+
+```bash
+curl -X POST "localhost:8100/mode?a=fused"   # 切融合
+curl -X POST "localhost:8100/mode?a=radar"   # 回到纯雷达
+```
+
+当前模式是**从进程命令行反推**的（`pgrep -af hector_mapping` 里看 `_scan_topic:=`），不依赖任何状态文件，重启后依然准。
+
+> 切换会重启建图程序，地图会中断（`~/data/final_map.*` 里已保存的不会丢）。
+
 hub 侧代理并把按钮画进网页：
 
 ```

@@ -25,3 +25,4 @@ Thumbs.db
 # 本地测试产物
 *.html.bak
 test_*.py
+nohup.out

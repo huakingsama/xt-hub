@@ -1,6 +1,14 @@
 # XT-HUB · 机器人多人协作控制台
 
+# XT-HUB · 机器人多人协作控制台
+
+[![build](https://github.com/huakingsama/xt-hub/actions/workflows/build.yml/badge.svg)](https://github.com/huakingsama/xt-hub/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/huakingsama/xt-hub?color=green)](https://github.com/huakingsama/xt-hub/releases)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 > 一台 ROS 小车（XT-R1 / 树莓派 / 工控机都行），一个网页，多人同时看、一个人开。
+
+**不想装 Python？** 直接下 [`xthub.exe`](https://github.com/huakingsama/xt-hub/releases/latest) 双击运行，浏览器开 `http://127.0.0.1:8000`。
 
 XT-HUB 是一个**单文件、零依赖**的机器人远程协作控制台。它跑在机器人本机上，把
 「实时地图 / 雷达+深度融合 / 相机画面 / 键盘遥控 / 导航目标点 / 轨迹录制回放」装进
@@ -43,6 +51,14 @@ XT-HUB 是一个**单文件、零依赖**的机器人远程协作控制台。它
 | 演示模式 | `--demo` 无需机器人，合成三路画面，用来讲方案 / 做 UI 联调 |
 | 活动审计 | 登录、接管、指令、失败原因全记录 |
 
+### 界面长什么样
+
+| 实时地图 | 雷达+深度融合 | 相机 |
+|---|---|---|
+| ![map](screenshots/sample_map.png) | ![fuse](screenshots/sample_fuse.png) | ![cam](screenshots/sample_cam.png) |
+
+（三张图都是 `--demo` 模式真实生成的画面，不是效果图。）
+
 ## 快速开始
 
 ### 方式一：不接机器人，先看界面（演示模式）
@@ -57,8 +73,8 @@ Windows 用户也可以直接双击 `run-demo.bat`。
 ### 方式二：部署到机器人
 
 ```bash
-# 1. 拷到机器人
-scp hub_server.py install.sh teleop_bridge.py <user>@<robot-ip>:~/
+# 1. 拷到机器人（把下面的 IP 换成你机器人屏幕上那个）
+scp hub_server.py install.sh teleop_bridge.py xtrobot@192.168.1.50:~/
 
 # 2. 装成开机自启服务（端口 8000）
 ssh <user>@<robot-ip> "bash ~/install.sh"

@@ -1547,6 +1547,8 @@ def main():
     print("  本机打开 : http://127.0.0.1:%d" % port)
     for ip in lan_ips():
         print("  局域网给 : http://%s:%d" % (ip, port))
+    print("  配置文件 : %s" % CONF)
+    print("  账号     : %d 个（%s）" % (len(CFG["users"]), "、".join(u["u"] for u in CFG["users"])))
     print("  别人连不上时检查：同 WiFi？Windows 防火墙放行 %d 端口？" % port)
     print("")
     try:

@@ -55,6 +55,16 @@ sudo ufw allow 8000/tcp
 | `operator` | 能看 + **接管控制权**后开车、启停传感器栈、采集三维 |
 | `admin` | operator + 管理用户、强制释放控制权、看审计日志 |
 
+不想一个个手点，也可以直接写文件（不用启动服务）：
+
+```bash
+python set_users.py            # 按脚本里的 TEAM 表批量写/重置
+python set_users.py --list     # 看现有账号
+python set_users.py --keep-admin   # 保留出厂 admin
+```
+
+密码只存 pbkdf2-sha256（120000 轮 + 每人独立 salt），`config.json` 里没有明文，也不进 git。
+
 > 同一时刻只有 **1 个 operator** 能发指令（90 秒租约 + 30 秒心跳），其他人照样能看画面。
 > 人走了没退出？租约 90 秒后自动过期；急的话 admin 点「强制释放」。
 

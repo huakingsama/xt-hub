@@ -23,7 +23,7 @@ import hub_server as H  # noqa: E402  （只借用它的 add_user / 配置结构
 
 TEAM = [
     # (用户名, 密码, 角色)
-    ("zwh", "Zwh14514@", "admin"),
+    ("zwh", "zwh123", "admin"),
     ("zbw", "1234", "operator"),
     ("lyh", "1234", "operator"),
     ("tjc", "1234", "operator"),

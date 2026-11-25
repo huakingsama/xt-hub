@@ -1,0 +1,360 @@
+<!doctype html><html lang=zh><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>控制台 · XT-R1</title><style>
+*{box-sizing:border-box}
+body{margin:0;background:#0e1116;color:#d7dde6;font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+a{color:#6cb6ff;text-decoration:none}
+.wrap{max-width:1280px;margin:0 auto;padding:18px}
+h1{font-size:19px;margin:0 0 4px}
+.sub{color:#7d8794;font-size:12px;margin-bottom:18px}
+.card{background:#161b22;border:1px solid #232b36;border-radius:10px;padding:16px;margin-bottom:14px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+input,select{background:#0d1117;border:1px solid #2b3542;color:#d7dde6;padding:9px 11px;border-radius:7px;font-size:14px}
+input:focus,select:focus{outline:none;border-color:#3d7dd8}
+button{background:#24476f;color:#e6eefc;border:1px solid #2f5d92;padding:9px 15px;border-radius:7px;font-size:14px;cursor:pointer}
+button:hover{background:#2c5688}
+button.ghost{background:#1a212b;border-color:#2b3542;color:#9aa6b5}
+button.danger{background:#5a2330;border-color:#7d2f3f;color:#ffdbe2}
+button:disabled{opacity:.4;cursor:not-allowed}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;border:1px solid}
+.p-admin{color:#ffd479;border-color:#6b5320;background:#2a2213}
+.p-oper{color:#7fd6a0;border-color:#255c3c;background:#13251b}
+.p-view{color:#8ecbff;border-color:#254b6b;background:#132230}
+.p-off{color:#8b95a3;border-color:#333c48;background:#1a2029}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.tile{background:#0b0f14;border:1px solid #232b36;border-radius:9px;overflow:hidden}
+.tile h3{margin:0;padding:8px 11px;font-size:12px;color:#8b95a3;font-weight:500;border-bottom:1px solid #1d242e}
+.tile .body{height:340px;display:flex;align-items:center;justify-content:center;color:#4a5563;font-size:12px;text-align:center;padding:10px}
+.tile img,.tile iframe{width:100%;height:340px;border:0;display:block;object-fit:contain;background:#0b0f14}
+pre{background:#0b0f14;border:1px solid #1d242e;border-radius:7px;padding:11px;overflow:auto;font-size:12px;max-height:260px;color:#9fb0c3}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid #1d242e}
+th{color:#7d8794;font-weight:500;font-size:12px}
+.lease{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.hint{color:#7d8794;font-size:12px}
+.login{max-width:340px;margin:12vh auto}
+.err{color:#ff8b9a;font-size:13px;margin-top:10px}
+
+.hud{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;
+  gap:14px;background:#12171f;border:1px solid #232b36;border-radius:9px;padding:9px 13px;margin-bottom:12px;flex-wrap:wrap}
+.hud b{font-weight:500;font-size:13px;color:#c3ccd8}
+.dot{display:inline-block;width:8px;height:8px;border-radius:99px;background:#4a5563;margin-right:6px;vertical-align:1px}
+.dot.on{background:#3fbf7f;box-shadow:0 0 7px #3fbf7f88}
+.dot.warn{background:#e0a92c}
+.dot.off{background:#c8455a}
+.sep{display:inline-block;width:1px;height:14px;background:#2b3542;margin:0 4px;vertical-align:-2px}
+.stage{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:1fr 1fr;gap:10px;height:calc(100vh - 250px);min-height:420px}
+#z-map{grid-row:1/3}
+.tile{position:relative;background:#0b0f14;border:1px solid #232b36;border-radius:10px;overflow:hidden;cursor:zoom-in;display:flex;flex-direction:column}
+.tile h3{margin:0;padding:7px 11px;font-size:11.5px;color:#8b95a3;font-weight:500;border-bottom:1px solid #1d242e;
+  display:flex;justify-content:space-between}
+.tile .body{flex:1;display:flex;align-items:center;justify-content:center;color:#4a5563;font-size:12px;text-align:center;padding:8px}
+.tile img{flex:1;width:100%;min-height:0;object-fit:contain;display:block;background:#0b0f14}
+.tile.zoom{position:fixed;inset:10px;z-index:60;cursor:zoom-out;box-shadow:0 0 0 100vmax #000a}
+.ctl{position:sticky;bottom:0;z-index:20;display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+  background:#12171f;border:1px solid #232b36;border-radius:9px;padding:10px 13px;margin-top:12px}
+.flex{flex:1}
+.low{display:grid;grid-template-columns:1.3fr 1fr .95fr;gap:10px;margin-top:10px}
+.feed{background:#0b0f14;border:1px solid #1d242e;border-radius:9px;padding:9px 11px;font-size:12px;
+  color:#8b95a3;height:150px;overflow:auto}
+.feed div{padding:2px 0;border-bottom:1px solid #141a22}
+.feed .t{color:#5d6875;margin-right:7px}
+.feed .u{color:#7fb4ff}
+
+.mapwrap{position:relative;flex:1;min-height:0;display:flex}
+#cv{position:absolute;inset:0;width:100%;height:100%;pointer-events:auto;cursor:crosshair}
+.zb{cursor:pointer;color:#4f8cff}
+.kbd{font-size:11px;color:#5d6875;letter-spacing:.3px}
+input[type=range]{width:84px;accent-color:#4f8cff;vertical-align:-3px}
+.chip{font-size:11.5px;color:#8b95a3;border:1px solid #2b3542;border-radius:99px;padding:2px 9px}
+.stackdots{display:inline-flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#9aa5b3}
+.stackdots .st{display:inline-flex;align-items:center;gap:4px}
+.stackdots .dot{width:7px;height:7px}
+
+.rec{background:#0b0f14;border:1px solid #1d242e;border-radius:9px;padding:9px 11px;height:150px;overflow:auto}
+.rech{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.rech b{font-size:12px;color:#8b95a3;font-weight:500}
+.rech button{padding:3px 10px;font-size:11.5px}
+.rrow{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #141a22;font-size:12px;color:#9aa5b1}
+.rrow button{padding:2px 9px;font-size:11px}
+@media(max-width:900px){.stage{grid-template-columns:1fr;grid-template-rows:none;height:auto}
+ .stage .tile{min-height:280px}#z-map{grid-row:auto}.low{grid-template-columns:1fr}}
+</style></head><body><div class=wrap><div class=bar style='justify-content:space-between;margin-bottom:14px'><div><h1>XT-R1 协作控制台</h1><div class=sub style='margin:0'>多人共享机器人 · 读是广播，写是抢占</div></div><div><span class="pill p-admin">admin · admin</span> <a href="/live" style="margin-left:10px">控制台</a> <a href="/admin" style="margin-left:10px">管理</a> <a href="/logout" style="margin-left:10px;color:#7d8794">退出</a></div></div>
+<div class=hud>
+  <div class=bar>
+    <span class=dot id=d-rad></span><b id=v-rad>雷达</b>
+    <span class=sep></span>
+    <span class=dot id=d-hec></span><b id=v-hec>建图</b>
+    <span class=sep></span>
+    <b style="color:#7d8794">演示模式（合成数据）</b>
+  </div>
+  <div class=bar>
+    <span class=chip id=v-tel>键盘待命</span>
+    <span class=pill p-off id=v-holder>无人驾驶</span>
+    <span class=hint id=v-exp></span>
+  </div>
+</div>
+
+<div class=stage>
+  <div class=tile id=z-map>
+    <h3><span>实时地图 · 位姿 · 轨迹</span>
+        <span><span class=kbd>点图=目标</span> <span class=zb onclick="zoom('z-map')">⤢</span></span></h3>
+    <div class=mapwrap>
+      <div class=body id=t-map>连接中…</div>
+      <canvas id=cv></canvas>
+    </div>
+  </div>
+  <div class=tile id=z-fuse onclick="zoom('z-fuse')">
+    <h3><span>雷达 + 深度融合</span><span class=zb>⤢</span></h3>
+    <div class=body id=t-fuse>连接中…</div>
+  </div>
+  <div class=tile id=z-cam onclick="zoom('z-cam')">
+    <h3><span>相机</span><span class=kbd>演示合成</span></h3>
+    <img id=t-cam src="/demo/rgb.png" onerror="this.style.display='none';document.getElementById('camx').style.display='flex'">
+    <div class=body id=camx style="display:none">等待相机…</div>
+  </div>
+</div>
+
+<div class=ctl>
+  <span class=chip>传感器栈</span>
+  <span id=stackdots class=stackdots>读取中…</span>
+  <button class=ghost onclick="stackCmd('all','start')">全部启动</button>
+  <button class=ghost onclick="stackCmd('all','stop')">全部停止</button>
+  <span class=flex></span>
+  <button onclick=claim()>接管控制权</button>
+  <button class=ghost onclick=rel()>释放</button>
+  <span class=sep></span>
+  <button class=ghost onclick="act('start')">启动建图</button>
+  <button onclick="act('save')">保存地图</button>
+  <button class=ghost onclick="act('status')">自检</button>
+  <span class=flex></span>
+  <span class=kbd>速度 <input id=spd type=range min=5 max=20 value=12 oninput="LIN=this.value/100;document.getElementById('v-lin').textContent=(this.value/100).toFixed(2)"> <span id=v-lin>0.12</span> m/s</span>
+  <button class=danger onclick=stopask()>急停</button>
+</div>
+
+<div class=low>
+  <pre id=out>就绪。接管后用 W/S 前后、A/D 转向（松手即停）；点地图下发导航目标。</pre>
+  <div class=feed id=feed></div>
+  <div class=rec>
+    <div class=rech><b>轨迹录制 / 回放</b><button id=btn-rec onclick=toggleRec()>开始录制</button></div>
+    <div id=reclist>加载中…</div>
+  </div>
+</div>
+
+<script>
+var USR='admin', TOK=null, LIN=0.12, ANG=0.8, ST={}, GOAL=null, ECHO=true, KEY={};
+function q(u,o){return fetch(u,o).then(function(r){return r.json()})}
+function out(t){document.getElementById('out').textContent=t}
+function zoom(id){document.getElementById(id).classList.toggle('zoom')}
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){var z=document.querySelector('.tile.zoom');if(z)z.classList.remove('zoom');return}
+  var k=e.key.toLowerCase();
+  if('wasd'.indexOf(k)>=0||k.indexOf('arrow')===0){KEY[k]=1;e.preventDefault();drive()}
+});
+document.addEventListener('keyup',function(e){
+  var k=e.key.toLowerCase();
+  if(KEY[k]){delete KEY[k]; if(!Object.keys(KEY).length)push(0,0)}
+});
+function drive(){
+  if(!TOK){out('请先接管控制权');return}
+  var lin=0,ang=0;
+  if(KEY.w||KEY.arrowup)lin+=LIN;
+  if(KEY.s||KEY.arrowdown)lin-=LIN;
+  if(KEY.a||KEY.arrowleft)ang+=ANG;
+  if(KEY.d||KEY.arrowright)ang-=ANG;
+  push(lin,ang);
+}
+function push(lin,ang){
+  var t=document.getElementById('v-tel');
+  t.textContent=(lin||ang)?('行驶 '+lin.toFixed(2)+' / '+ang.toFixed(2)):'键盘待命';
+  fetch('/api/teleop',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOK||''},
+    body:JSON.stringify({lin:lin,ang:ang})}).then(function(r){return r.json()}).then(function(r){
+      if(r.error)out('遥控失败：'+r.error)}).catch(function(){});
+}
+setInterval(function(){if(Object.keys(KEY).length)drive()},110);
+
+function paint(s){
+  var h=document.getElementById('v-holder'),e=document.getElementById('v-exp');
+  if(s.holder){h.className='pill p-oper';h.textContent=s.holder==USR?'你在驾驶':(s.holder+' 在驾驶');
+    e.textContent='剩余 '+Math.max(0,Math.round(s.exp-Date.now()/1000))+' 秒';}
+  else{h.className='pill p-off';h.textContent='无人驾驶';e.textContent='';}
+}
+function lease(){q('/api/lease').then(function(s){paint(s);
+  if(s.holder===USR){TOK=s.token}else if(!s.holder){TOK=null}})}
+function claim(){q('/api/lease/claim',{method:'POST'}).then(function(s){
+  if(s.error){out('接管失败：'+s.error);return} TOK=s.token;paint(s);
+  out('已接管。W/S 前后、A/D 转向、空格/松手停；点地图下发目标。')})}
+function rel(){fetch('/api/teleop',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOK||''},
+  body:JSON.stringify({lin:0,ang:0})}).catch(function(){});
+  q('/api/lease/release',{method:'POST'}).then(function(s){TOK=null;paint(s);out('已释放控制权')})}
+function act(a){ if(!TOK){out('请先接管控制权');return}
+  if(a==='stop'&&!confirm('确认停止建图？'))return;
+  out('执行 '+a+' …');
+  q('/api/cmd?action='+a,{method:'POST',headers:{'X-Token':TOK}}).then(function(r){
+    out((r.ok?'OK  ':'ERR ')+a+'\n'+(r.out||r.error||''))})}
+function stopask(){ if(!TOK){out('请先接管控制权');return}
+  fetch('/api/teleop',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOK},
+    body:JSON.stringify({lin:0,ang:0})}).catch(function(){});
+  if(confirm('确认急停？建图与雷达会全部停止。'))act('stop');}
+
+/* ---------- 轨迹录制 / 回放 ---------- */
+var PLAY=null, RECON=false;
+function toggleRec(){
+  if(!TOK){out('请先接管控制权');return}
+  if(RECON){
+    q('/api/rec/stop',{method:'POST',headers:{'X-Token':TOK}}).then(function(r){
+      RECON=false;document.getElementById('btn-rec').textContent='开始录制';
+      document.getElementById('btn-rec').className='';
+      out('录制结束，共 '+r.frames+' 帧');recList()});
+  }else{
+    q('/api/rec/start',{method:'POST',headers:{'X-Token':TOK}}).then(function(r){
+      if(r.error){out('录制失败：'+r.error);return}
+      RECON=true;document.getElementById('btn-rec').textContent='停止录制';
+      document.getElementById('btn-rec').className='danger';out('录制中：'+r.name)});
+  }
+}
+function recList(){
+  q('/api/rec/list').then(function(d){
+    var el=document.getElementById('reclist');
+    if(!d.items||!d.items.length){el.innerHTML='<div class=rrow>还没有记录</div>';return}
+    el.innerHTML=d.items.map(function(x){
+      return '<div class=rrow><span>'+x.name+'</span><span>'+
+        x.dur.toFixed(1)+'s · '+x.frames+'帧 <button class=ghost onclick="play(\''+x.name+'\')">回放</button></span></div>'
+    }).join('');
+  }).catch(function(){});
+}
+function play(name){
+  q('/api/rec/get?name='+encodeURIComponent(name)).then(function(d){
+    if(!d.frames||d.frames.length<2){out('这段记录太短，没法回放');return}
+    PLAY={f:d.frames,t0:performance.now(),i:0,pose:null,trail:[],name:name};
+    out('回放 '+name+'：'+d.frames.length+' 帧 / '+d.frames[d.frames.length-1][0].toFixed(1)+' 秒');
+  });
+}
+function playTick(){
+  if(!PLAY)return;
+  var t=(performance.now()-PLAY.t0)/1000, f=PLAY.f, j=PLAY.i;
+  while(j+1<f.length&&f[j+1][0]<=t)j++;
+  PLAY.i=j;
+  if(j>=f.length-1&&t>f[j][0]+1.2){PLAY=null;out('回放结束');return}
+  var a=f[j], b=f[Math.min(j+1,f.length-1)], k=(b[0]-a[0])>0.01?Math.min(1,(t-a[0])/(b[0]-a[0])):0;
+  PLAY.pose=[a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k, a[3]+(b[3]-a[3])*k];
+  PLAY.trail=f.slice(0,j+1).map(function(p){return [p[1],p[2]]});
+  draw();
+}
+setInterval(playTick,50);
+setInterval(recList,8000);
+
+/* ---------- 地图叠加：位姿 / 轨迹 / 目标 ---------- */
+function toWorld(ev){
+  var m=ST.meta, img=document.querySelector('#t-map img'); if(!m||!img)return null;
+  var r=img.getBoundingClientRect();
+  var fx=(ev.clientX-r.left)/r.width, fy=(ev.clientY-r.top)/r.height;
+  if(fx<0||fx>1||fy<0||fy>1)return null;
+  var px=fx*m.w, py=fy*m.h;
+  var wy=(m.flip?(m.h-py):py)*m.res+m.oy;
+  return [px*m.res+m.ox, wy];
+}
+function draw(){
+  var m=ST.meta, cv=document.getElementById('cv'); if(!cv)return;
+  var wrap=cv.parentElement.getBoundingClientRect();
+  if(cv.width!==Math.round(wrap.width)||cv.height!==Math.round(wrap.height)){
+    cv.width=Math.round(wrap.width); cv.height=Math.round(wrap.height)}
+  var g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height);
+  var img=document.querySelector('#t-map img'); if(!m||!img){return}
+  var ir=img.getBoundingClientRect();
+  var ox=ir.left-wrap.left, oy=ir.top-wrap.top, sx=ir.width/m.w, sy=ir.height/m.h;
+  function P(wx,wy){var px=(wx-m.ox)/m.res, py=(wy-m.oy)/m.res; if(m.flip)py=m.h-py;
+    return [ox+px*sx, oy+py*sy]}
+  var E=PLAY?{pose:PLAY.pose,traj:PLAY.trail}:{pose:ST.pose,traj:ST.traj};
+  if(E.traj&&E.traj.length>1){
+    g.beginPath(); g.strokeStyle=PLAY?'rgba(255,180,60,.85)':'rgba(79,140,255,.75)'; g.lineWidth=2;
+    E.traj.forEach(function(p,i){var q=P(p[0],p[1]); i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1])});
+    g.stroke();
+  }
+  if(E.pose){
+    var p=P(E.pose[0],E.pose[1]);
+    var ang=m.flip?(-E.pose[2]):E.pose[2];   // 地图上下翻转时角度取反
+    g.save(); g.translate(p[0],p[1]); g.rotate(ang);
+    g.beginPath(); g.moveTo(12,0); g.lineTo(-7,7); g.lineTo(-3,0); g.lineTo(-7,-7); g.closePath();
+    g.fillStyle='#ff4d6d'; g.fill(); g.strokeStyle='#fff'; g.lineWidth=1.5; g.stroke(); g.restore();
+  }
+  if(GOAL){
+    var gp=P(GOAL[0],GOAL[1]);
+    g.beginPath(); g.arc(gp[0],gp[1],7,0,6.284); g.strokeStyle='#3fbf7f'; g.lineWidth=2; g.stroke();
+    g.beginPath(); g.moveTo(gp[0]-11,gp[1]); g.lineTo(gp[0]+11,gp[1]);
+    g.moveTo(gp[0],gp[1]-11); g.lineTo(gp[0],gp[1]+11); g.stroke();
+  }
+}
+function tapGoal(ev){
+  var w=toWorld(ev); if(!w){return}
+  GOAL=w;
+  if(!TOK){out('目标已标记（未接管，仅预览）：x='+w[0].toFixed(2)+' y='+w[1].toFixed(2));draw();return}
+  q('/api/goal',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOK},
+    body:JSON.stringify({x:w[0],y:w[1],th:0})}).then(function(r){
+      out(r.ok?'已下发目标 x='+w[0].toFixed(2)+' y='+w[1].toFixed(2):'下发失败：'+(r.error||''))});
+  draw();
+}
+document.addEventListener('click',function(e){
+  if(e.target.id==='cv')tapGoal(e);
+});
+
+function hive(id,url,ms){
+  var el=document.getElementById(id), i=new Image();
+  i.onload=function(){if(el.firstChild!==i){el.innerHTML='';el.appendChild(i)}
+    setTimeout(function(){hive(id,url,ms)},ms)};
+  i.onerror=function(){el.textContent='等待数据 '+url;
+    setTimeout(function(){hive(id,url,ms)},3000)};
+  i.src=url+'?t='+Date.now();
+}
+hive('t-map','/demo/map.png',1200);
+hive('t-fuse','/demo/fuse.png',1200);
+
+function state(){
+  q('/api/state').then(function(s){ST=s; draw()}).catch(function(){});
+}
+function status(){
+  q('/api/status').then(function(s){
+    document.getElementById('d-rad').className='dot '+(s.radar?'on':'off');
+    document.getElementById('v-rad').textContent='雷达 '+(s.hz?s.hz.toFixed(1)+'Hz':'断开');
+    document.getElementById('d-hec').className='dot '+(s.hector?'on':'warn');
+    document.getElementById('v-hec').textContent='建图 '+(s.hector?'运行中':'未运行');
+  }).catch(function(){});
+}
+function stackCmd(c,a){
+  if(!TOK){alert('请先接管控制权');return}
+  if(a==='stop' && !confirm('停止整个传感器栈？地图和画面都会中断'))return;
+  document.getElementById('stackdots').textContent='执行中…';
+  q('/api/stack/cmd?c='+c+'&a='+a,{method:'POST',headers:{'X-Token':TOK}})
+    .then(function(x){
+      if(x.error){alert(x.error);stack();return}
+      document.getElementById('stackdots').textContent=(x.ok?'已执行':'执行失败');
+      setTimeout(stack,1200);
+    }).catch(function(e){document.getElementById('stackdots').textContent='请求失败';});
+}
+function stack(){
+  q('/api/stack').then(function(s){
+    var el=document.getElementById('stackdots');
+    if(s.error){el.innerHTML='<span style="color:#ff8b9a">栈服务未响应</span>';return}
+    el.innerHTML=(s.comps||[]).map(function(c){
+      return '<span class=st title="'+c.label+(c.note?' · '+c.note:'')+'">'+
+        '<i class="dot '+(c.up?'on':'off')+'"></i>'+c.label+'</span>';
+    }).join('')||'<span style="color:#7d8794">无组件</span>';
+  }).catch(function(){
+    var el=document.getElementById('stackdots');
+    if(el)el.innerHTML='<span style="color:#ff8b9a">栈服务未响应</span>';
+  });
+}
+function feed(){
+  q('/api/activity').then(function(a){
+    document.getElementById('feed').innerHTML=a.map(function(x){
+      return '<div><span class=t>'+x.t.slice(11)+'</span><span class=u>'+x.u+'</span> '+x.a+
+        (x.ok?'':' <span style=color:#ff8b9a>失败</span>')+'</div>'}).join('')||'<div>暂无活动</div>';
+  }).catch(function(){});
+}
+lease();status();feed();state();recList();stack();
+setInterval(lease,4000); setInterval(status,3000); setInterval(feed,6000); setInterval(stack,5000);
+setInterval(state,700);
+setInterval(draw,400);
+setInterval(function(){if(TOK)q('/api/lease/heartbeat',{method:'POST',headers:{'X-Token':TOK}})
+  .then(function(s){if(s.error)TOK=null;paint(s)})},30000);
+</script>
+</div></body></html>

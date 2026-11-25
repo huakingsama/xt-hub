@@ -26,6 +26,38 @@ XT-HUB 是一个**单文件、零依赖**的机器人远程协作控制台。它
 ```
 
 
+
+## 传感器栈管理（robot_stack.py）
+
+hub 只负责"给人看和开"，**不**自己去启停雷达/相机。启停交给车上一个 15KB 的小服务 `robot_stack.py`（端口 8100），它把散落的脚本收成 5 个组件：
+
+| 组件 | 说明 | 健康检查 |
+|---|---|---|
+| `slam` | roscore + rplidar + hector + mapview(:8091) | `pgrep hector_mapping` + 端口 8091 |
+| `camera` | Astra 深度相机驱动 | `pgrep astra_camera_node` |
+| `fuse` | 雷达+深度融合画面(:8093) | `pgrep fuse_view.py` + 端口 8093 |
+| `cam` | 相机画面服务(:8090) | 端口 8090 |
+| `bridge` | 遥控桥(:8099) | 端口 8099 |
+
+```bash
+# 机器人上
+python3 robot_stack.py --port 8100
+curl -s localhost:8100/status | python3 -m json.tool
+curl -X POST "localhost:8100/cmd?c=all&a=start"
+curl -X POST "localhost:8100/cmd?c=fuse&a=restart"
+curl -s "localhost:8100/log?c=slam&n=30"
+```
+
+hub 侧代理并把按钮画进网页：
+
+```
+GET  /api/stack                      -> 五个组件的 up / 端口状态
+POST /api/stack/cmd?c=all&a=start    -> 需要控制权（90s 租约）
+```
+
+> 顺序由 `START_ORDER` 决定：`slam → camera → fuse → cam → bridge`；停止时反向。
+> 启停是**串行**的（进程内 `LOCK`），两个人在网页上同时点不会打架。
+
 ## 改了代码怎么让它生效
 
 `hub_server.py` 是进程启动时加载的，**改完必须重启**。三种方式：

@@ -340,6 +340,30 @@ def _bridge(path, payload=None, timeout=1.6):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
+STACK_PORT = int(os.environ.get("XTHUB_STACK_PORT", "8100"))
+
+
+def stack_proxy(path, method="GET", timeout=20):
+    """转发到机器人上的 robot_stack.py(:8100)"""
+    url = "http://127.0.0.1:%d%s" % (STACK_PORT, path)
+    req = urllib.request.Request(url, data=(b"" if method == "POST" else None),
+                                 method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def demo_stack():
+    """演示态：五个组件都在跑，让人能看到完整的界面"""
+    names = [("slam", "雷达 + 建图", 8091), ("camera", "深度相机驱动", 0),
+             ("fuse", "雷达+深度融合画面", 8093), ("cam", "相机画面服务", 8090),
+             ("bridge", "遥控桥", 8099)]
+    return {"ok": True, "dry": True, "up": len(names), "total": len(names),
+            "host": "demo", "ts": time.strftime("%H:%M:%S"),
+            "comps": [{"name": n, "label": l, "note": "", "up": True,
+                       "port": bool(p) if p else None, "port_no": p, "last": None}
+                      for n, l, p in names]}
+
+
 def demo_state():
     """演示位姿：与 demo_map 用同一套参数，叠在图上正好对齐"""
     t = time.time() - _T0
@@ -615,6 +639,9 @@ CSS2 = """
 .kbd{font-size:11px;color:#5d6875;letter-spacing:.3px}
 input[type=range]{width:84px;accent-color:#4f8cff;vertical-align:-3px}
 .chip{font-size:11.5px;color:#8b95a3;border:1px solid #2b3542;border-radius:99px;padding:2px 9px}
+.stackdots{display:inline-flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:#9aa5b3}
+.stackdots .st{display:inline-flex;align-items:center;gap:4px}
+.stackdots .dot{width:7px;height:7px}
 
 .rec{background:#0b0f14;border:1px solid #1d242e;border-radius:9px;padding:9px 11px;height:150px;overflow:auto}
 .rech{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
@@ -678,6 +705,11 @@ def live_page(user, robot):
 </div>
 
 <div class=ctl>
+  <span class=chip>传感器栈</span>
+  <span id=stackdots class=stackdots>读取中…</span>
+  <button class=ghost onclick="stackCmd('all','start')">全部启动</button>
+  <button class=ghost onclick="stackCmd('all','stop')">全部停止</button>
+  <span class=flex></span>
   <button onclick=claim()>接管控制权</button>
   <button class=ghost onclick=rel()>释放</button>
   <span class=sep></span>
@@ -877,6 +909,30 @@ function status(){
     document.getElementById('v-hec').textContent='建图 '+(s.hector?'运行中':'未运行');
   }).catch(function(){});
 }
+function stackCmd(c,a){
+  if(!TOK){alert('请先接管控制权');return}
+  if(a==='stop' && !confirm('停止整个传感器栈？地图和画面都会中断'))return;
+  document.getElementById('stackdots').textContent='执行中…';
+  q('/api/stack/cmd?c='+c+'&a='+a,{method:'POST',headers:{'X-Token':TOK}})
+    .then(function(x){
+      if(x.error){alert(x.error);stack();return}
+      document.getElementById('stackdots').textContent=(x.ok?'已执行':'执行失败');
+      setTimeout(stack,1200);
+    }).catch(function(e){document.getElementById('stackdots').textContent='请求失败';});
+}
+function stack(){
+  q('/api/stack').then(function(s){
+    var el=document.getElementById('stackdots');
+    if(s.error){el.innerHTML='<span style="color:#ff8b9a">栈服务未响应</span>';return}
+    el.innerHTML=(s.comps||[]).map(function(c){
+      return '<span class=st title="'+c.label+(c.note?' · '+c.note:'')+'">'+
+        '<i class="dot '+(c.up?'on':'off')+'"></i>'+c.label+'</span>';
+    }).join('')||'<span style="color:#7d8794">无组件</span>';
+  }).catch(function(){
+    var el=document.getElementById('stackdots');
+    if(el)el.innerHTML='<span style="color:#ff8b9a">栈服务未响应</span>';
+  });
+}
 function feed(){
   q('/api/activity').then(function(a){
     document.getElementById('feed').innerHTML=a.map(function(x){
@@ -884,8 +940,8 @@ function feed(){
         (x.ok?'':' <span style=color:#ff8b9a>失败</span>')+'</div>'}).join('')||'<div>暂无活动</div>';
   }).catch(function(){});
 }
-lease();status();feed();state();recList();
-setInterval(lease,4000); setInterval(status,3000); setInterval(feed,6000);
+lease();status();feed();state();recList();stack();
+setInterval(lease,4000); setInterval(status,3000); setInterval(feed,6000); setInterval(stack,5000);
 setInterval(state,700);
 setInterval(draw,400);
 setInterval(function(){if(TOK)q('/api/lease/heartbeat',{method:'POST',headers:{'X-Token':TOK}})
@@ -997,6 +1053,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(st)
         if p == "/api/status":
             return self._json(robot_status())
+        if p == "/api/stack":
+            if DEMO:
+                return self._json(demo_stack())
+            try:
+                return self._json(stack_proxy("/status"))
+            except Exception as e:
+                return self._json({"error": "传感器栈服务未响应: %s" % e, "comps": []})
         if p == "/api/activity":
             return self._json(recent_activity())
         if p == "/api/state":
@@ -1085,6 +1148,25 @@ class H(BaseHTTPRequestHandler):
             rc, out = run_slam(a)
             audit(s["u"], "cmd:" + a, out[:200].replace("\n", " "), rc == 0)
             return self._json({"ok": rc == 0, "rc": rc, "out": out})
+        if p == "/api/stack/cmd":
+            st = lease_state()
+            if st["token"] != tok:
+                return self._json({"error": "没有控制权，请先接管"})
+            c = (qs.get("c") or ["all"])[0]
+            a = (qs.get("a") or ["start"])[0]
+            if a not in ("start", "stop", "restart"):
+                return self._json({"error": "a 只能是 start/stop/restart"})
+            if DEMO:
+                audit(s["u"], "stack:" + a, c, True)
+                return self._json({"ok": True, "demo": True, "comp": c, "action": a,
+                                   "out": "[demo] 演示模式不会真的启停"})
+            try:
+                r = stack_proxy("/cmd?c=%s&a=%s" % (c, a), "POST", timeout=180)
+                audit(s["u"], "stack:%s:%s" % (a, c), str(r.get("ok")), bool(r.get("ok")))
+                return self._json(r)
+            except Exception as e:
+                audit(s["u"], "stack:%s:%s" % (a, c), str(e)[:80], False)
+                return self._json({"error": "传感器栈服务未响应: %s" % e})
         if p == "/api/rec/start":
             st = lease_state()
             if st["token"] != tok:

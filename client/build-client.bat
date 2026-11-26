@@ -7,8 +7,9 @@ cd /d "%~dp0"
 set "PY=python"
 if exist "%LOCALAPPDATA%\Programs\Python\Python311\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python311\python.exe"
 
+if not exist xthub.ico "%PY%" make_icon.py
 echo [1/2] building onedir package ...
-"%PY%" -m PyInstaller --onedir --windowed --name XTHUBClient ^
+"%PY%" -m PyInstaller --onedir --windowed --name XTHUBClient --icon xthub.ico ^
   --distpath "..\..\client_build" ^
   --workpath "..\..\client_tmp" ^
   --specpath "..\..\client_tmp" ^

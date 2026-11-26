@@ -310,3 +310,4 @@ MIT
 > `{"ok":true,"version":"1.2","zip":"/download/client.zip","size":123}`
 > 下载接口是 `GET /download/client.zip`。
 
+deploy-linux-server.sh: 一条命令把 Linux 机器装成 hub（含 systemd 自启）

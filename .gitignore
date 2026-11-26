@@ -29,3 +29,7 @@ nohup.out
 jobs.json
 tools/robot-ip.txt
 client/_selftest*
+.build_tmp/
+client_build_new/
+client_build/
+client_tmp/

@@ -28,3 +28,4 @@ test_*.py
 nohup.out
 jobs.json
 tools/robot-ip.txt
+client/_selftest*

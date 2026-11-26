@@ -26,10 +26,11 @@ import webbrowser
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
+from tkinter import simpledialog
 
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.2"   # 显示用
-VERNUM = "1.2"  # 跟服务器比大小用
+VER = "v1.4"   # 显示用
+VERNUM = "1.4"  # 跟服务器比大小用
 HUB_PORT = 8000
 
 # ---------------------------------------------------------------- 配置存储
@@ -340,6 +341,13 @@ class App(tk.Tk):
                                  font=("Microsoft YaHei UI", 10))
         self.btn_upd.pack(side="right", padx=(0, 8))
 
+        self.btn_manual = tk.Button(bar, text="手动输地址", command=self.manual_ip,
+                                    bg="#1f2937", fg=FG, bd=0, relief="flat",
+                                    activebackground="#374151", activeforeground="white",
+                                    padx=10, pady=6, cursor="hand2",
+                                    font=("Microsoft YaHei UI", 9))
+        self.btn_manual.pack(side="left", padx=(8, 0))
+
         self.lbl_tip = tk.Label(self, text="提示：双击列表也能进入；车没开机时这里会显示找不到",
                                 bg=BG, fg=DIM, font=("Microsoft YaHei UI", 8))
         self.lbl_tip.pack(fill="x", padx=18, pady=(0, 12))
@@ -360,7 +368,7 @@ class App(tk.Tk):
         prefixes = local_prefixes()
         # 先试上次成功过的地址
         last = self.cfg.get("last_ip")
-        if last and probe(last):
+        if last and probe(last, self.cfg.get("last_port", HUB_PORT)):
             self.after(0, lambda: self._add(last, prefer=True))
         found = scan(prefixes)
         for ip in found:
@@ -376,7 +384,8 @@ class App(tk.Tk):
         tag = "[本机] " if ip in local_ips() else ""
         label = "%s%-16s  %s" % (tag, ip, h if h else "(无响应)")
         self.lst.insert("end", label)
-        if self.sel is None or prefer:
+        reachable = bool(h)
+        if (self.sel is None and reachable) or (prefer and reachable):
             self.sel = ip
             idx = self.lst.size() - 1
             self.lst.selection_clear(0, "end")
@@ -400,11 +409,46 @@ class App(tk.Tk):
         if not s:
             return
         self.sel = self.hits[s[0]]
+        h = health(self.sel)
+        if not h.startswith("ok"):
+            self.lbl_state.config(
+                text="已选：%s（无响应，这台没跑服务）" % self.sel, fg=BAD)
+            return
         if self.sel in local_ips():
             self.lbl_state.config(
                 text="已选：%s（这台电脑自己，没有真实画面）" % self.sel, fg=WARN)
         else:
             self.lbl_state.config(text="已选：%s" % self.sel, fg=OK)
+
+    def manual_ip(self):
+        """手动输入地址：适合跨网段/自动扫描扫不到的情况"""
+        d = simpledialog.askstring(
+            APP_NAME, "输入服务器地址（例如 10.35.186.232 或 10.35.186.232:8000）：",
+            parent=self)
+        if not d:
+            return
+        d = d.strip().replace("http://", "").replace("https://", "").rstrip("/")
+        ip = d.split(":")[0]
+        port = HUB_PORT
+        if ":" in d:
+            try:
+                port = int(d.split(":")[1])
+            except Exception:
+                port = HUB_PORT
+        h = health(ip, port)
+        if not h.startswith("ok"):
+            messagebox.showwarning(APP_NAME,
+                                   "连不上 %s:%d\n\n请确认：\n"
+                                   "· 对方电脑开着并且服务器在跑\n"
+                                   "· 你和他在同一个网络\n"
+                                   "· 对方防火墙放行了 %d 端口" % (ip, port, port))
+            return
+        self.cfg["last_ip"] = ip
+        self.cfg["last_port"] = port
+        save_cfg(self.cfg)
+        self._add(ip, prefer=True)
+        self.lbl_state.config(text="已连接：%s:%d" % (ip, port), fg=OK)
+        self.check_update(silent=True)
 
     def check_update(self, silent=False):
         if not self.sel:
@@ -412,12 +456,21 @@ class App(tk.Tk):
                 messagebox.showinfo(APP_NAME, "先找到一台 XT-HUB 才能检查更新。")
             return
         ip = self.sel
+        h = health(ip)
+        if not h.startswith("ok"):
+            if not silent:
+                messagebox.showwarning(
+                    APP_NAME,
+                    "连不上这台服务器：%s\n\n列表里那一条显示「无响应」，说明这台机器上\n"
+                    "没有在跑 XT-HUB（可能是别人的电脑，或者是旧记录）。\n\n"
+                    "请选一条显示 ok 的地址再试。" % ip)
+            return
         info = remote_version(ip)
         if not info or not info.get("version"):
             if not silent:
                 messagebox.showwarning(APP_NAME,
-                                       "这台服务器不支持版本查询（可能是旧版 hub）。\n"
-                                       "可以直接找管理员要新的客户端。")
+                                       "这台服务器在跑，但没有版本查询接口（hub 是旧版）。\n"
+                                       "可以让管理员把 hub 更新到最新，或直接找他要新客户端。")
             return
         need = _vnum(info["version"]) > _vnum(VERNUM)
         if not need:

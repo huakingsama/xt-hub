@@ -28,8 +28,8 @@ from tkinter import ttk
 from tkinter import messagebox
 
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.1"   # 显示用
-VERNUM = "1.1"  # 跟服务器比大小用
+VER = "v1.2"   # 显示用
+VERNUM = "1.2"  # 跟服务器比大小用
 HUB_PORT = 8000
 
 # ---------------------------------------------------------------- 配置存储

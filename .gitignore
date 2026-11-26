@@ -33,3 +33,4 @@ client/_selftest*
 client_build_new/
 client_build/
 client_tmp/
+dist/

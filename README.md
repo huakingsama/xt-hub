@@ -288,3 +288,25 @@ git tag v1.0.0 && git push origin v1.0.0
 ## License
 
 MIT
+
+## 客户端自更新（管理员操作）
+
+改动 `client/xthub_client.py` 后，发布新版本只要三步：
+
+1. 改版本号：`client/xthub_client.py` 里 `VERNUM = "1.2"`，同时把 `hub_server.py` 的
+   `CLIENT_VER = "1.2"` 改掉（两处必须一致）。
+2. 重编 + 打包：
+   ```
+   client\build-client.bat
+   powershell Compress-Archive -Path client_build_new\XTHUBClient -DestinationPath dist\client.zip -Force
+   ```
+3. 传上车：双击 `upload-client-dist.bat`（会 scp 到 `~/xthub/dist/client.zip`）。
+
+完成这三步后，所有人下次打开客户端就会收到"发现新版本"的提示，点一下自动换新。
+
+> hub 侧只需要能读到 `dist/client.zip`（查找顺序：`XTHUB_CLIENT_ZIP` 环境变量 →
+> `<hub>/dist/client.zip` → `~/xthub/dist/client.zip`）。
+> 检查接口是 **免登录** 的 `GET /api/client/version`，返回
+> `{"ok":true,"version":"1.2","zip":"/download/client.zip","size":123}`
+> 下载接口是 `GET /download/client.zip`。
+

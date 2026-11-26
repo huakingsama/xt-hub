@@ -44,6 +44,22 @@ AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()
 
 VER = "v1.1"          # 版本号：页面和启动横幅都会显示，方便确认"是不是同一版"
+CLIENT_VER = "1.1"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
+CLIENT_ZIP = os.environ.get("XTHUB_CLIENT_ZIP", "")   # 客户端升级包路径（zip）
+
+
+def client_zip_path():
+    """找客户端升级包：环境变量 > <hub>/dist/client.zip > ~/xthub/dist/client.zip"""
+    cands = []
+    if CLIENT_ZIP:
+        cands.append(CLIENT_ZIP)
+    cands.append(os.path.join(HERE, "dist", "client.zip"))
+    cands.append(os.path.join(os.path.expanduser("~"), "xthub", "dist", "client.zip"))
+    for c in cands:
+        if c and os.path.isfile(c):
+            return c
+    return ""
+
 DRY = "--dry-run" in sys.argv
 
 # ---------------------------------------------------------------- config ----
@@ -1252,6 +1268,18 @@ class H(BaseHTTPRequestHandler):
             t = time.time() - _T0
             key = p.split("?")[0]
             return self._send(200, _demo_png(key, t), "image/png")
+        if p == "/api/client/version":
+            zp = client_zip_path()
+            return self._json({"ok": True, "version": CLIENT_VER,
+                               "zip": "/download/client.zip" if zp else "",
+                               "size": os.path.getsize(zp) if zp else 0})
+        if p == "/download/client.zip":
+            zp = client_zip_path()
+            if not zp:
+                return self._send(404, "客户端升级包还没放上来")
+            with open(zp, "rb") as f:
+                data = f.read()
+            return self._send(200, data, "application/zip")
         if p == "/healthz":
             return self._send(200, "ok %s demo=%s dry=%s" % (time.strftime("%H:%M:%S"), DEMO, DRY),
                               "text/plain; charset=utf-8")

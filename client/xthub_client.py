@@ -12,6 +12,9 @@ XT-HUB 客户端  v1.0
 
 import json
 import os
+import shutil
+import tempfile
+import zipfile
 import socket
 import subprocess
 import sys
@@ -25,7 +28,8 @@ from tkinter import ttk
 from tkinter import messagebox
 
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.0"
+VER = "v1.1"   # 显示用
+VERNUM = "1.1"  # 跟服务器比大小用
 HUB_PORT = 8000
 
 # ---------------------------------------------------------------- 配置存储
@@ -180,6 +184,90 @@ BAD = "#ef4444"
 WARN = "#eab308"
 
 
+
+# ---------------------------------------------------------------- 自更新
+def _vnum(v):
+    """把 '1.10' 这种版本号变成可比较的元组"""
+    try:
+        return tuple(int(x) for x in str(v).strip().lstrip("vV").split("."))
+    except Exception:
+        return (0,)
+
+
+def remote_version(ip, port=HUB_PORT, timeout=4):
+    """问服务器：最新客户端版本是多少"""
+    url = "http://%s:%d/api/client/version" % (ip, port)
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8", "replace"))
+    except Exception:
+        return None
+
+
+def download(url, dst, on_progress=None):
+    with urllib.request.urlopen(url, timeout=30) as r:
+        total = int(r.headers.get("Content-Length") or 0)
+        got = 0
+        with open(dst, "wb") as f:
+            while True:
+                chunk = r.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+                got += len(chunk)
+                if on_progress and total:
+                    on_progress(got, total)
+    return got
+
+
+UPDATE_BAT = r"""@echo off
+chcp 65001 >nul
+set "SRC=%~1"
+set "DST=%~2"
+set "EXE=%~3"
+:wait
+tasklist /FI "IMAGENAME eq XTHUBClient.exe" 2>nul | find /i "XTHUBClient.exe" >nul
+if not errorlevel 1 (
+  ping -n 2 127.0.0.1 >nul
+  goto wait
+)
+robocopy "%SRC%" "%DST%" /E /NFL /NDL /NJH /NJS /NP >nul
+start "" "%EXE%"
+ping -n 3 127.0.0.1 >nul
+del "%~f0" 2>nul
+"""
+
+
+def apply_update(base_url, info, on_progress=None):
+    """下载 → 解压 → 交给 update.bat 替换 → 本进程退出"""
+    if not getattr(sys, "frozen", False):
+        return "当前是源码方式运行，不能自更新（只有 exe 可以）"
+    if not info.get("zip"):
+        return "服务器上没有放升级包（dist/client.zip）"
+    td = tempfile.mkdtemp(prefix="xthub_upd_")
+    zp = os.path.join(td, "client.zip")
+    download(base_url.rstrip("/") + info["zip"], zp, on_progress)
+
+    raw = os.path.join(td, "raw")
+    with zipfile.ZipFile(zp) as z:
+        z.extractall(raw)
+    # 兼容两种打包：根目录直接是文件，或多一层 "XT-HUB 客户端/"
+    src = raw
+    inner = [n for n in os.listdir(raw) if not n.startswith("__MACOSX")]
+    if len(inner) == 1 and os.path.isdir(os.path.join(raw, inner[0])):
+        src = os.path.join(raw, inner[0])
+    if not os.path.isfile(os.path.join(src, "XTHUBClient.exe")):
+        return "升级包里没找到 XTHUBClient.exe，包可能打错了"
+
+    target = os.path.dirname(os.path.abspath(sys.executable))
+    bat = os.path.join(td, "update.bat")
+    with open(bat, "w", encoding="ascii", newline="\r\n") as f:
+        f.write(UPDATE_BAT)
+    subprocess.Popen(["cmd", "/c", bat, src, target, os.path.abspath(sys.executable)],
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    return None   # None = 成功，调用方随即退出
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -245,6 +333,13 @@ class App(tk.Tk):
                                 font=("Microsoft YaHei UI", 10, "bold"))
         self.btn_go.pack(side="right")
 
+        self.btn_upd = tk.Button(bar, text="检查更新", command=self.check_update,
+                                 bg="#1f2937", fg=FG, bd=0, relief="flat",
+                                 activebackground="#374151", activeforeground="white",
+                                 padx=12, pady=6, cursor="hand2",
+                                 font=("Microsoft YaHei UI", 10))
+        self.btn_upd.pack(side="right", padx=(0, 8))
+
         self.lbl_tip = tk.Label(self, text="提示：双击列表也能进入；车没开机时这里会显示找不到",
                                 bg=BG, fg=DIM, font=("Microsoft YaHei UI", 8))
         self.lbl_tip.pack(fill="x", padx=18, pady=(0, 12))
@@ -290,6 +385,8 @@ class App(tk.Tk):
 
     def _scan_done(self):
         self.scanning = False
+        if self.sel:
+            self.after(600, lambda: self.check_update(silent=True))
         self.btn_scan.config(state="normal", text="重新查找")
         if not self.hits:
             self.lbl_state.config(
@@ -308,6 +405,51 @@ class App(tk.Tk):
                 text="已选：%s（这台电脑自己，没有真实画面）" % self.sel, fg=WARN)
         else:
             self.lbl_state.config(text="已选：%s" % self.sel, fg=OK)
+
+    def check_update(self, silent=False):
+        if not self.sel:
+            if not silent:
+                messagebox.showinfo(APP_NAME, "先找到一台 XT-HUB 才能检查更新。")
+            return
+        ip = self.sel
+        info = remote_version(ip)
+        if not info or not info.get("version"):
+            if not silent:
+                messagebox.showwarning(APP_NAME,
+                                       "这台服务器不支持版本查询（可能是旧版 hub）。\n"
+                                       "可以直接找管理员要新的客户端。")
+            return
+        need = _vnum(info["version"]) > _vnum(VERNUM)
+        if not need:
+            if not silent:
+                messagebox.showinfo(APP_NAME, "已经是最新版（本机 %s / 服务器 %s）。"
+                                    % (VERNUM, info["version"]))
+            return
+        size = info.get("size") or 0
+        ok = messagebox.askyesno(
+            APP_NAME,
+            "发现新版本！\n\n本机版本：%s\n最新版本：%s\n安装包大小：%.1f MB\n\n"
+            "现在更新吗？（客户端会自动关闭、替换完成后重新打开）"
+            % (VERNUM, info["version"], size / 1048576.0))
+        if not ok:
+            return
+        self.btn_upd.config(state="disabled", text="下载中…")
+        threading.Thread(target=self._do_update,
+                         args=("http://%s:%d" % (ip, HUB_PORT), info), daemon=True).start()
+
+    def _do_update(self, base, info):
+        def prog(got, total):
+            pct = int(got * 100 / total) if total else 0
+            self.after(0, lambda: self.btn_upd.config(text="下载 %d%%" % pct))
+
+        err = apply_update(base, info, prog)
+        if err:
+            self.after(0, lambda: (self.btn_upd.config(state="normal", text="检查更新"),
+                                   messagebox.showerror(APP_NAME, "更新失败：" + err)))
+            return
+        self.after(0, lambda: self.lbl_state.config(text="更新中，程序即将自动重启 …", fg=WARN))
+        time.sleep(0.8)
+        os._exit(0)
 
     def enter(self):
         if not self.sel:

@@ -45,6 +45,28 @@ AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()
 
 VER = "v1.1"          # 版本号：页面和启动横幅都会显示，方便确认"是不是同一版"
+PAGE_3D_LIVE = """<!doctype html><html><head><meta charset=utf-8>
+<title>XT-R1 实时三维</title><style>
+html,body{margin:0;height:100%;background:#0b0f17;color:#8899ac;
+ font-family:system-ui,"Microsoft YaHei",sans-serif}
+#f{width:100%;height:100%;border:0}
+#w{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;
+ font-size:13px;line-height:1.9}
+</style></head><body>
+<iframe id=f allow="fullscreen"></iframe>
+<div id=w style="display:none">连不上三维服务（:8094）<br>
+<span style="opacity:.6">车上要先启动「全部启动」（需要雷达在跑才有数据）</span></div>
+<script>
+var host = location.hostname || "192.168.110.44";
+var url = "http://" + host + ":8094/";
+var f = document.getElementById("f");
+f.src = url;
+setTimeout(function(){
+  try { if (!f.contentWindow || !f.contentWindow.document) throw 1; }
+  catch (e) { document.getElementById("w").style.display = "block"; }
+}, 3000);
+</script></body></html>"""
+
 CLIENT_VER = "1.7"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
 CLIENT_ZIP = os.environ.get("XTHUB_CLIENT_ZIP", "")   # 客户端升级包路径（zip）
 
@@ -804,6 +826,7 @@ def live_page(user, robot):
     <span class=sep></span>
     <b style="color:#7d8794">__MODE__</b>
     <span class=sep></span><a class=lk3 href="/3d" target="_blank">3D 地图 ↗</a>
+    <a class=lk3 href="/3d-live" target="_blank">实时三维 ↗</a>
   </div>
   <div class=bar>
     <span class=chip id=v-tel>键盘待命</span>
@@ -1340,6 +1363,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, page("登录", LOGIN % "<div class=hint>请先登录</div>"))
         if p == "/live":
             return self._send(200, page("控制台", live_page(s, CFG["robot"]) + "", s))
+        if p == "/3d-live":
+            return self._send(200, PAGE_3D_LIVE, "text/html; charset=utf-8")
         if p == "/3d":
             return self._send(200, page3d(s))
         if p == "/api/stack/capture":

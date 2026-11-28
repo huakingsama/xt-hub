@@ -70,6 +70,12 @@ COMPS = [
         note=":8090/rgb /depth /ir",
     ),
     dict(
+        name="cloud3d", label="实时三维点云", check=("cloud3d_liv[e].py", 8094, "/tmp/cloud3d_live.log"),
+        start=SH + "~/run_cloud3d_live.sh",
+        stop=SH + "'pkill -9 -f cloud3d_liv[e].py'",
+        note=":8094 雷达+深度实时三维（可拖动旋转）",
+    ),
+    dict(
         name="bridge", label="遥控桥", check=("teleop_[b]ridge.py", 8099, "/tmp/bridge.log"),
         start=SH + "~/run_bridge.sh",
         stop=SH + "'pkill -9 -f teleop_[b]ridge.py'",

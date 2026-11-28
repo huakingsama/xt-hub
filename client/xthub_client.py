@@ -36,8 +36,8 @@ except Exception:
     HAVE_PIL = False
 
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.6"   # 显示用
-VERNUM = "1.6"  # 跟服务器比大小用
+VER = "v1.7"   # 显示用
+VERNUM = "1.7"  # 跟服务器比大小用
 HUB_PORT = 8000
 CAM_PORT = 8090     # 相机画面（MJPEG）
 MAP_PORT = 8091     # 实时地图（PNG）
@@ -449,32 +449,45 @@ class VideoWindow(tk.Toplevel):
                            % (label, e))
                 time.sleep(2)
 
-    # ---------------- MJPEG 拉流
+    # ---------------- MJPEG 拉流（只画最新一帧，永不积压）
     def _stream(self, url):
-        resp = urllib.request.urlopen(url, timeout=6)
+        resp = urllib.request.urlopen(url, timeout=4)
         buf = b""
+        dropped = 0
         while not self.stop_flag:
-            chunk = resp.read(4096)
+            chunk = resp.read(16384)
             if not chunk:
                 buf = b""
-                time.sleep(0.3)
+                time.sleep(0.2)
                 continue
             buf += chunk
+            # 把缓冲区里所有完整帧切出来，只保留最后一帧 → 延迟恒定，不会越看越慢
+            frames = []
             while True:
                 i = buf.find(b"\xff\xd8")
-                j = buf.find(b"\xff\xd9", i + 2) if i >= 0 else -1
-                if i < 0 or j < i:
+                if i < 0:
+                    buf = b""
                     break
-                frame, buf = buf[i:j + 2], buf[j + 2:]
-                self._draw(frame)
+                j = buf.find(b"\xff\xd9", i + 2)
+                if j < i:
+                    buf = buf[i:]          # 半帧，留到下次
+                    break
+                frames.append(buf[i:j + 2])
+                buf = buf[j + 2:]
+            if not frames:
+                continue
+            dropped += max(0, len(frames) - 1)
+            self._draw(frames[-1])
 
     # ---------------- PNG 轮询
     def _poll(self, url):
         while not self.stop_flag:
-            data = urllib.request.urlopen(url, timeout=8).read()
+            sep = "&" if "?" in url else "?"
+            data = urllib.request.urlopen(url + sep + "t=%d" % int(time.time() * 1000),
+                                          timeout=6).read()
             if data:
                 self._draw(data)
-            time.sleep(0.4)
+            time.sleep(0.25)
 
     def _draw(self, raw):
         try:
@@ -482,9 +495,15 @@ class VideoWindow(tk.Toplevel):
             im.load()
         except Exception:
             return
-        w = max(self.winfo_width() - 24, 320)
-        h = max(self.winfo_height() - 70, 240)
-        im.thumbnail((w, h))
+        try:
+            box = self._box
+        except AttributeError:
+            box = None
+        if box is None or time.time() - getattr(self, "_box_t", 0) > 2:
+            box = (max(self.winfo_width() - 24, 320), max(self.winfo_height() - 70, 240))
+            self._box, self._box_t = box, time.time()
+        if im.size > box:
+            im.thumbnail(box)
         try:
             photo = ImageTk.PhotoImage(im, master=self)
         except Exception:

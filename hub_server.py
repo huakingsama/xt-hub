@@ -45,7 +45,7 @@ AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()
 
 VER = "v1.1"          # 版本号：页面和启动横幅都会显示，方便确认"是不是同一版"
-CLIENT_VER = "1.6"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
+CLIENT_VER = "1.7"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
 CLIENT_ZIP = os.environ.get("XTHUB_CLIENT_ZIP", "")   # 客户端升级包路径（zip）
 
 

@@ -14,6 +14,7 @@ import hmac
 import json
 import math
 import os
+import socket
 import re
 import shlex
 import subprocess
@@ -44,7 +45,7 @@ AUDIT = os.path.join(HERE, "audit.jsonl")
 LOCK = threading.RLock()
 
 VER = "v1.1"          # 版本号：页面和启动横幅都会显示，方便确认"是不是同一版"
-CLIENT_VER = "1.5"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
+CLIENT_VER = "1.6"     # 桌面客户端最新版本号（客户端启动时来问，比自己高就提示更新）
 CLIENT_ZIP = os.environ.get("XTHUB_CLIENT_ZIP", "")   # 客户端升级包路径（zip）
 
 
@@ -1242,6 +1243,54 @@ class H(BaseHTTPRequestHandler):
         except Exception:
             pass
 
+    def _send_file(self, path, filename, ctype="application/octet-stream"):
+        """流式发送大文件：支持 Range 断点续传，64KB 分块，禁用 Nagle。"""
+        try:
+            total = os.path.getsize(path)
+        except OSError:
+            return self._send(404, "文件不存在")
+        start, end = 0, total - 1
+        rng = self.headers.get("Range", "")
+        m = re.match(r"bytes=(\d*)-(\d*)", rng or "")
+        partial = False
+        if m:
+            a, b = m.group(1), m.group(2)
+            if a:
+                start = int(a)
+            if b:
+                end = min(int(b), total - 1)
+            if 0 <= start <= end < total:
+                partial = True
+            else:
+                start, end, partial = 0, total - 1, False
+        length = end - start + 1
+        self.send_response(206 if partial else 200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(length))
+        if partial:
+            self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, total))
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+        try:
+            with open(path, "rb") as f:
+                f.seek(start)
+                left = length
+                while left > 0:
+                    chunk = f.read(min(65536, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+            self.wfile.flush()
+        except Exception:
+            pass
+
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, ensure_ascii=False), "application/json; charset=utf-8")
 
@@ -1277,9 +1326,7 @@ class H(BaseHTTPRequestHandler):
             zp = client_zip_path()
             if not zp:
                 return self._send(404, "客户端升级包还没放上来")
-            with open(zp, "rb") as f:
-                data = f.read()
-            return self._send(200, data, "application/zip")
+            return self._send_file(zp, "client.zip", "application/zip")
         if p == "/healthz":
             return self._send(200, "ok %s demo=%s dry=%s" % (time.strftime("%H:%M:%S"), DEMO, DRY),
                               "text/plain; charset=utf-8")

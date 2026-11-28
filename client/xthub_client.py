@@ -36,8 +36,8 @@ except Exception:
     HAVE_PIL = False
 
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.5"   # 显示用
-VERNUM = "1.5"  # 跟服务器比大小用
+VER = "v1.6"   # 显示用
+VERNUM = "1.6"  # 跟服务器比大小用
 HUB_PORT = 8000
 CAM_PORT = 8090     # 相机画面（MJPEG）
 MAP_PORT = 8091     # 实时地图（PNG）
@@ -215,20 +215,51 @@ def remote_version(ip, port=HUB_PORT, timeout=4):
         return None
 
 
-def download(url, dst, on_progress=None):
-    with urllib.request.urlopen(url, timeout=30) as r:
-        total = int(r.headers.get("Content-Length") or 0)
-        got = 0
-        with open(dst, "wb") as f:
-            while True:
-                chunk = r.read(65536)
-                if not chunk:
-                    break
-                f.write(chunk)
-                got += len(chunk)
-                if on_progress and total:
-                    on_progress(got, total)
-    return got
+def _fmt(n):
+    if n >= 1048576:
+        return "%.1f MB" % (n / 1048576.0)
+    if n >= 1024:
+        return "%.0f KB" % (n / 1024.0)
+    return "%d B" % n
+
+
+def download(url, dst, on_progress=None, tries=4):
+    """带断点续传的下载。dst.part 存在就接着下，网络抖动自动重试。"""
+    part = dst + ".part"
+    for attempt in range(1, tries + 1):
+        have = os.path.getsize(part) if os.path.exists(part) else 0
+        req = urllib.request.Request(url)
+        if have:
+            req.add_header("Range", "bytes=%d-" % have)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                code = getattr(r, "status", 200)
+                if code == 200 and have:
+                    have = 0                      # 服务器不支持续传 → 重头来
+                    open(part, "wb").close()
+                total = int(r.headers.get("Content-Length") or 0) + have
+                mode = "ab" if have else "wb"
+                got = have
+                with open(part, mode) as f:
+                    while True:
+                        chunk = r.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        got += len(chunk)
+                        if on_progress:
+                            on_progress(got, total)
+            if total and got < total:
+                raise IOError("连接中断（%s / %s）" % (_fmt(got), _fmt(total)))
+            if os.path.exists(dst):
+                os.remove(dst)
+            os.replace(part, dst)
+            return got
+        except Exception as e:
+            if attempt >= tries:
+                raise
+            time.sleep(1.2 * attempt)             # 退避后再试，接着下
+    return 0
 
 
 UPDATE_BAT = r"""@echo off
@@ -249,7 +280,7 @@ del "%~f0" 2>nul
 """
 
 
-def apply_update(base_url, info, on_progress=None):
+def apply_update(base_url, info, on_progress=None, on_phase=None):
     """下载 → 解压 → 交给 update.bat 替换 → 本进程退出"""
     if not getattr(sys, "frozen", False):
         return "当前是源码方式运行，不能自更新（只有 exe 可以）"
@@ -257,8 +288,13 @@ def apply_update(base_url, info, on_progress=None):
         return "服务器上没有放升级包（dist/client.zip）"
     td = tempfile.mkdtemp(prefix="xthub_upd_")
     zp = os.path.join(td, "client.zip")
-    download(base_url.rstrip("/") + info["zip"], zp, on_progress)
+    def phase(t):
+        if on_phase:
+            on_phase(t)
 
+    phase("正在下载安装包…")
+    download(base_url.rstrip("/") + info["zip"], zp, on_progress)
+    phase("正在解压…")
     raw = os.path.join(td, "raw")
     with zipfile.ZipFile(zp) as z:
         z.extractall(raw)
@@ -270,6 +306,7 @@ def apply_update(base_url, info, on_progress=None):
     if not os.path.isfile(os.path.join(src, "XTHUBClient.exe")):
         return "升级包里没找到 XTHUBClient.exe，包可能打错了"
 
+    phase("正在替换程序…")
     target = os.path.dirname(os.path.abspath(sys.executable))
     bat = os.path.join(td, "update.bat")
     with open(bat, "w", encoding="ascii", newline="\r\n") as f:
@@ -277,6 +314,62 @@ def apply_update(base_url, info, on_progress=None):
     subprocess.Popen(["cmd", "/c", bat, src, target, os.path.abspath(sys.executable)],
                      creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
     return None   # None = 成功，调用方随即退出
+
+
+class DownloadDialog(tk.Toplevel):
+    """更新时的进度窗口：下载百分比 / 速度 / 剩余时间 / 当前阶段。"""
+
+    def __init__(self, master, ver_from, ver_to, size):
+        tk.Toplevel.__init__(self, master)
+        self.title("正在更新 XT-HUB 客户端")
+        self.configure(bg=PANEL)
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)   # 下载中不许关
+        self.t0 = time.time()
+        self.last_t = self.t0
+        self.last_n = 0
+        self.speed = 0.0
+
+        tk.Label(self, text="发现新版本 %s → %s" % (ver_from, ver_to), bg=PANEL, fg=FG,
+                 font=("Microsoft YaHei UI", 11, "bold")).pack(anchor="w", padx=18, pady=(16, 4))
+        self.lbl = tk.Label(self, text="准备下载…", bg=PANEL, fg=DIM,
+                            font=("Microsoft YaHei UI", 9))
+        self.lbl.pack(anchor="w", padx=18)
+        self.bar = ttk.Progressbar(self, length=420, mode="determinate", maximum=100)
+        self.bar.pack(padx=18, pady=10, fill="x")
+        self.sub = tk.Label(self, text="共 %.1f MB" % (size / 1048576.0), bg=PANEL, fg=DIM,
+                            font=("Consolas", 9))
+        self.sub.pack(anchor="w", padx=18, pady=(0, 16))
+        self.update_idletasks()
+        self.geometry("+%d+%d" % (master.winfo_rootx() + 60, master.winfo_rooty() + 60))
+
+    def progress(self, got, total):
+        now = time.time()
+        dt = now - self.last_t
+        if dt >= 0.4:
+            self.speed = (got - self.last_n) / dt
+            self.last_t, self.last_n = now, got
+        pct = int(got * 100 / total) if total else 0
+        left = ""
+        if self.speed > 1024 and total:
+            secs = int((total - got) / self.speed)
+            left = "  剩 %d:%02d" % (secs // 60, secs % 60)
+        self.bar["value"] = pct
+        self.lbl.config(text="正在下载  %d%%   %s / %s" % (pct, _fmt(got), _fmt(total)))
+        self.sub.config(text="%s/s%s" % (_fmt(self.speed), left))
+
+    def phase(self, text):
+        self.bar.config(mode="indeterminate")
+        self.bar.start(12)
+        self.lbl.config(text=text)
+        self.sub.config(text="这一步可能需要几十秒，请不要关闭窗口")
+
+    def close(self):
+        try:
+            self.bar.stop()
+            self.destroy()
+        except Exception:
+            pass
 
 
 class VideoWindow(tk.Toplevel):
@@ -636,16 +729,28 @@ class App(tk.Tk):
                          args=("http://%s:%d" % (ip, HUB_PORT), info), daemon=True).start()
 
     def _do_update(self, base, info):
-        def prog(got, total):
-            pct = int(got * 100 / total) if total else 0
-            self.after(0, lambda: self.btn_upd.config(text="下载 %d%%" % pct))
+        size = info.get("size") or 0
+        dlg = DownloadDialog(self, VERNUM, info.get("version", "?"), size)
 
-        err = apply_update(base, info, prog)
+        def prog(got, total):
+            try:
+                dlg.progress(got, total)
+            except Exception:
+                pass
+
+        def phase(text):
+            try:
+                dlg.phase(text)
+            except Exception:
+                pass
+
+        err = apply_update(base, info, prog, phase)
         if err:
+            dlg.close()
             self.after(0, lambda: (self.btn_upd.config(state="normal", text="检查更新"),
                                    messagebox.showerror(APP_NAME, "更新失败：" + err)))
             return
-        self.after(0, lambda: self.lbl_state.config(text="更新中，程序即将自动重启 …", fg=WARN))
+        self.after(0, lambda: dlg.phase("更新完成，程序即将自动重启 …"))
         time.sleep(0.8)
         os._exit(0)
 

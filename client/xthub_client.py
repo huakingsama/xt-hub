@@ -10,6 +10,7 @@ XT-HUB 客户端  v1.0
 · 用 Edge/Chrome 的 --app 模式打开，没有地址栏，像原生程序
 """
 
+import io
 import json
 import os
 import shutil
@@ -28,10 +29,19 @@ from tkinter import ttk
 from tkinter import messagebox
 from tkinter import simpledialog
 
+try:
+    from PIL import Image, ImageTk
+    HAVE_PIL = True
+except Exception:
+    HAVE_PIL = False
+
 APP_NAME = "XT-HUB 客户端"
-VER = "v1.4"   # 显示用
-VERNUM = "1.4"  # 跟服务器比大小用
+VER = "v1.5"   # 显示用
+VERNUM = "1.5"  # 跟服务器比大小用
 HUB_PORT = 8000
+CAM_PORT = 8090     # 相机画面（MJPEG）
+MAP_PORT = 8091     # 实时地图（PNG）
+FUSE_PORT = 8093    # 雷达+深度融合（PNG）
 
 # ---------------------------------------------------------------- 配置存储
 def cfg_path():
@@ -269,6 +279,134 @@ def apply_update(base_url, info, on_progress=None):
     return None   # None = 成功，调用方随即退出
 
 
+class VideoWindow(tk.Toplevel):
+    """客户端内置画面窗口：彩色 / 深度 / 融合 / 地图，四路切换。"""
+
+    CHANNELS = [
+        ("rgb",   "彩色画面", CAM_PORT,  "mjpeg", "/rgb"),
+        ("depth", "深度画面", CAM_PORT,  "mjpeg", "/depth"),
+        ("fuse",  "雷达+深度融合", FUSE_PORT, "png", "/fuse.png"),
+        ("map",   "实时地图", MAP_PORT,  "png", "/map.png"),
+    ]
+
+    def __init__(self, master, ip):
+        tk.Toplevel.__init__(self, master)
+        self.ip = ip
+        self.stop_flag = False
+        self.cur = None
+        self._img = None
+
+        self.title("XT-HUB 画面 · %s" % ip)
+        self.configure(bg=BG)
+        self.geometry("860x680")
+        self.minsize(560, 420)
+
+        bar = tk.Frame(self, bg=BG)
+        bar.pack(fill="x", padx=10, pady=(10, 4))
+        for key, label, _p, _k, _path in self.CHANNELS:
+            b = tk.Button(bar, text=label, command=lambda k=key: self.play(k),
+                          bg="#1f2937", fg=FG, bd=0, relief="flat",
+                          activebackground="#374151", activeforeground="white",
+                          padx=12, pady=5, cursor="hand2",
+                          font=("Microsoft YaHei UI", 9))
+            b.pack(side="left", padx=(0, 6))
+        tk.Button(bar, text="关闭", command=self.close,
+                  bg="#374151", fg=FG, bd=0, relief="flat",
+                  activebackground="#4b5563", activeforeground="white",
+                  padx=12, pady=5, cursor="hand2",
+                  font=("Microsoft YaHei UI", 9)).pack(side="right")
+
+        self.lbl = tk.Label(self, bg="#0b0f14", fg=DIM,
+                            text="正在连接画面 …",
+                            font=("Microsoft YaHei UI", 11))
+        self.lbl.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.protocol("WM_DELETE_WINDOW", self.close)
+        if not HAVE_PIL:
+            self.lbl.config(text="本机缺少图片组件（Pillow），无法显示画面")
+            return
+        self.play("rgb")
+
+    # ---------------- 切换通道
+    def play(self, key):
+        self.stop_flag = True          # 让上一个线程退出
+        time.sleep(0.05)
+        self.stop_flag = False
+        self.cur = key
+        self.lbl.config(text="连接中 …", image="")
+        threading.Thread(target=self._worker, args=(key,), daemon=True).start()
+
+    def _chan(self, key):
+        for c in self.CHANNELS:
+            if c[0] == key:
+                return c
+        return self.CHANNELS[0]
+
+    def _worker(self, key):
+        _k, label, port, kind, path = self._chan(key)
+        url = "http://%s:%d%s" % (self.ip, port, path)
+        while not self.stop_flag:
+            try:
+                if kind == "mjpeg":
+                    self._stream(url)
+                else:
+                    self._poll(url)
+            except Exception as e:
+                self._text("%s\n\n连不上：%s\n（车上对应服务可能没启动，控制台点『全部启动』）"
+                           % (label, e))
+                time.sleep(2)
+
+    # ---------------- MJPEG 拉流
+    def _stream(self, url):
+        resp = urllib.request.urlopen(url, timeout=6)
+        buf = b""
+        while not self.stop_flag:
+            chunk = resp.read(4096)
+            if not chunk:
+                buf = b""
+                time.sleep(0.3)
+                continue
+            buf += chunk
+            while True:
+                i = buf.find(b"\xff\xd8")
+                j = buf.find(b"\xff\xd9", i + 2) if i >= 0 else -1
+                if i < 0 or j < i:
+                    break
+                frame, buf = buf[i:j + 2], buf[j + 2:]
+                self._draw(frame)
+
+    # ---------------- PNG 轮询
+    def _poll(self, url):
+        while not self.stop_flag:
+            data = urllib.request.urlopen(url, timeout=8).read()
+            if data:
+                self._draw(data)
+            time.sleep(0.4)
+
+    def _draw(self, raw):
+        try:
+            im = Image.open(io.BytesIO(raw))
+            im.load()
+        except Exception:
+            return
+        w = max(self.winfo_width() - 24, 320)
+        h = max(self.winfo_height() - 70, 240)
+        im.thumbnail((w, h))
+        try:
+            photo = ImageTk.PhotoImage(im, master=self)
+        except Exception:
+            return
+        self._img = photo
+        self.after(0, lambda: (self.lbl.config(image=photo, text=""),))
+
+    def _text(self, msg):
+        self.after(0, lambda: self.lbl.config(text=msg, image=""))
+
+    def close(self):
+        self.stop_flag = True
+        self.destroy()
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -333,6 +471,13 @@ class App(tk.Tk):
                                 padx=18, pady=6, cursor="hand2",
                                 font=("Microsoft YaHei UI", 10, "bold"))
         self.btn_go.pack(side="right")
+
+        self.btn_video = tk.Button(bar, text="看画面 ▶", command=self.open_video,
+                                   bg="#0ea5e9", fg="white", bd=0, relief="flat",
+                                   activebackground="#0284c7", activeforeground="white",
+                                   padx=14, pady=6, cursor="hand2",
+                                   font=("Microsoft YaHei UI", 10, "bold"))
+        self.btn_video.pack(side="right", padx=(0, 8))
 
         self.btn_upd = tk.Button(bar, text="检查更新", command=self.check_update,
                                  bg="#1f2937", fg=FG, bd=0, relief="flat",
@@ -520,8 +665,38 @@ class App(tk.Tk):
         self.lbl_tip.config(text="已在%s打开 · 账号找管理员要（管理员 zwh）" %
                                  ("独立窗口" if how == "app" else "浏览器"))
 
+    def open_video(self):
+        """在客户端里直接看车上画面（不需要浏览器）。"""
+        if not self.sel:
+            messagebox.showwarning(APP_NAME, "还没有找到车。\n请让车上电，或点「重新查找」。")
+            return
+        ip = self.sel
+        if not health(ip).startswith("ok"):
+            messagebox.showerror(APP_NAME, "连不上 %s:8000\n车可能关机了，或 IP 变了。" % ip)
+            return
+        self.cfg["last_ip"] = ip
+        save_cfg(self.cfg)
+        VideoWindow(self, ip)
+        self.lbl_tip.config(text="画面窗口已打开 · 四路可切换；连不上就回控制台点『全部启动』")
+
 
 def main():
+    # 直接看画面：XTHUBClient.exe --video [IP]
+    if "--video" in sys.argv:
+        i = sys.argv.index("--video")
+        ip = sys.argv[i + 1] if len(sys.argv) > i + 1 else None
+        if not ip:
+            ip = load_cfg().get("last_ip") or "192.168.110.44"
+        try:
+            app = App()
+            app.withdraw()
+            VideoWindow(app, ip)
+            app.mainloop()
+        except Exception as e:
+            print(e)
+            return 1
+        return 0
+
     # 单实例：已经有窗口就退出
     try:
         App().mainloop()
